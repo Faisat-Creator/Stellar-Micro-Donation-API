@@ -399,30 +399,26 @@ router.get(
   auditStatsAccess,
   strictDateRangeQuerySchema,
   validateDateRange,
-  (req, res, next) => {
-    try {
-      const { startDate, endDate } = req.query;
-      const start = new Date(startDate);
-      const end = new Date(endDate);
-      const isAdmin = req.user && req.user.role === 'admin';
+  asyncHandler(async (req, res) => {
+    const { startDate, endDate } = req.query;
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    const isAdmin = req.user && req.user.role === 'admin';
 
-      const stats = StatsService.getDonorStats(start, end, isAdmin);
+    const stats = await StatsService.getDonorStats(start, end, isAdmin);
 
-      res.json({
-        success: true,
-        data: stats,
-        metadata: {
-          dateRange: {
-            start: start.toISOString(),
-            end: end.toISOString(),
-          },
-          totalDonors: stats.length,
+    res.json({
+      success: true,
+      data: stats,
+      metadata: {
+        dateRange: {
+          start: start.toISOString(),
+          end: end.toISOString(),
         },
-      });
-    } catch (error) {
-      next(error);
-    }
-  },
+        totalDonors: stats.length,
+      },
+    });
+  }),
 );
 
 /**
@@ -436,30 +432,26 @@ router.get(
   auditStatsAccess,
   strictDateRangeQuerySchema,
   validateDateRange,
-  (req, res, next) => {
-    try {
-      const { startDate, endDate } = req.query;
-      const start = new Date(startDate);
-      const end = new Date(endDate);
-      const isAdmin = req.user && req.user.role === 'admin';
+  asyncHandler(async (req, res) => {
+    const { startDate, endDate } = req.query;
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    const isAdmin = req.user && req.user.role === 'admin';
 
-      const stats = StatsService.getRecipientStats(start, end, isAdmin);
+    const stats = await StatsService.getRecipientStats(start, end, isAdmin);
 
-      res.json({
-        success: true,
-        data: stats,
-        metadata: {
-          dateRange: {
-            start: start.toISOString(),
-            end: end.toISOString(),
-          },
-          totalRecipients: stats.length,
+    res.json({
+      success: true,
+      data: stats,
+      metadata: {
+        dateRange: {
+          start: start.toISOString(),
+          end: end.toISOString(),
         },
-      });
-    } catch (error) {
-      next(error);
-    }
-  },
+        totalRecipients: stats.length,
+      },
+    });
+  }),
 );
 
 /**
