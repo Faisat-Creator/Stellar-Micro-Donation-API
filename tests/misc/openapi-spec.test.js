@@ -14,8 +14,8 @@ const { spec } = require('../../src/config/openapi');
 // ─── Spec structure ───────────────────────────────────────────────────────────
 
 describe('OpenAPI spec structure', () => {
-  it('has openapi 3.0.x version', () => {
-    expect(spec.openapi).toMatch(/^3\.0\./);
+  it('has openapi 3.1.x version', () => {
+    expect(spec.openapi).toMatch(/^3\.1\./);
   });
 
   it('has info block with title and version', () => {
