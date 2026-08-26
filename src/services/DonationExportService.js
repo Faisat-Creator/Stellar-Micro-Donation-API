@@ -161,10 +161,13 @@ class DonationExportService {
   }
 
   /**
-   * Process an export job in the background.
+   * Process an export job in the background with streaming to prevent OOM.
+   * Rows are processed in configurable batches (default: 500) and written incrementally.
    * @param {string} jobId - Export job ID
    */
   static async processExportJob(jobId) {
+    const BATCH_SIZE = parseInt(process.env.EXPORT_BATCH_SIZE || '500', 10);
+
     try {
       // Update status to processing
       await this.updateExportStatus(jobId, EXPORT_STATUS.PROCESSING);
@@ -179,8 +182,12 @@ class DonationExportService {
         throw new Error('Job not found');
       }
 
-      // Query donations with filters
-      const donations = await this.queryDonations({
+      // Prepare file path
+      const fileName = `${jobId}.${job.format}`;
+      const filePath = path.join(EXPORT_DIR, fileName);
+
+      // Build SQL query with filters
+      const { sql, params } = this.buildQuerySQL({
         startDate: job.start_date,
         endDate: job.end_date,
         status: job.status_filter,
@@ -188,18 +195,75 @@ class DonationExportService {
         recipientPublicKey: job.recipient_public_key,
       });
 
-      // Generate export content
-      let content;
-      if (job.format === EXPORT_FORMAT.CSV) {
-        content = this.convertToCSV(donations);
+      let rowCount = 0;
+      const headers = [
+        'id',
+        'amount',
+        'senderPublicKey',
+        'recipientPublicKey',
+        'memo',
+        'status',
+        'timestamp',
+        'transactionHash',
+      ];
+      const isCsv = job.format === EXPORT_FORMAT.CSV;
+      let buffer = '';
+      let firstRow = true;
+
+      // Initialize file with opening bracket for JSON
+      if (!isCsv) {
+        buffer = '[\n';
       } else {
-        content = this.convertToJSON(donations);
+        buffer = headers.join(',') + '\n';
       }
 
-      // Write to file
-      const fileName = `${jobId}.${job.format}`;
-      const filePath = path.join(EXPORT_DIR, fileName);
-      await fs.writeFile(filePath, content, 'utf8');
+      // Stream rows one at a time using Database.each
+      await Database.each(sql, params, (row) => {
+        const formattedRow = {
+          id: row.id,
+          amount: row.amount,
+          senderPublicKey: row.senderPublicKey,
+          recipientPublicKey: row.recipientPublicKey,
+          memo: row.memo,
+          status: row.status,
+          timestamp: row.timestamp,
+          transactionHash: row.transactionHash,
+        };
+
+        if (isCsv) {
+          const csvLine = this.serializeCSVRow(formattedRow, headers);
+          buffer += csvLine + '\n';
+        } else {
+          if (!firstRow) {
+            buffer += ',\n';
+          }
+          buffer += JSON.stringify(formattedRow);
+          firstRow = false;
+        }
+
+        rowCount++;
+
+        // Flush buffer when it reaches a threshold to keep memory bounded
+        if (buffer.length > 1024 * 1024) { // 1MB
+          fs.appendFileSync(filePath, buffer);
+          buffer = '';
+        }
+
+        // Log progress every BATCH_SIZE rows
+        if (rowCount % BATCH_SIZE === 0) {
+          log.debug('DONATION_EXPORT_SERVICE', 'Export progress', {
+            jobId,
+            processedRows: rowCount,
+          });
+        }
+      });
+
+      // Close JSON array and flush remaining buffer
+      if (!isCsv) {
+        buffer += '\n]';
+      }
+
+      await fs.writeFile(filePath, buffer, { flag: 'a' });
 
       // Generate signed URL
       const expiresAt = new Date(Date.now() + SIGNED_URL_EXPIRY_MS).toISOString();
@@ -213,13 +277,13 @@ class DonationExportService {
 
       // Update job as completed
       await Database.run(
-        `UPDATE donation_exports 
-         SET status = ?, record_count = ?, file_path = ?, signed_url = ?, 
-             signed_url_expires_at = ?, updated_at = ? 
+        `UPDATE donation_exports
+         SET status = ?, record_count = ?, file_path = ?, signed_url = ?,
+             signed_url_expires_at = ?, updated_at = ?
          WHERE export_id = ?`,
         [
           EXPORT_STATUS.COMPLETED,
-          donations.length,
+          rowCount,
           filePath,
           signedUrl,
           expiresAt,
@@ -230,7 +294,7 @@ class DonationExportService {
 
       log.info('DONATION_EXPORT_SERVICE', 'Export job completed', {
         jobId,
-        records: donations.length,
+        records: rowCount,
         format: job.format,
       });
     } catch (err) {
@@ -243,25 +307,26 @@ class DonationExportService {
   }
 
   /**
-   * Query donations with filters.
+   * Build SQL query with filters for donations export.
+   * Returns the query and parameters for use with streaming or batching.
    * @param {Object} filters - Query filters
-   * @returns {Promise<Array>} Donation records
+   * @returns {Object} { sql: string, params: Array }
    */
-  static async queryDonations(filters = {}) {
+  static buildQuerySQL(filters = {}) {
     let query = `
-      SELECT 
+      SELECT
         t.id,
         t.amount,
-        sender.publicKey AS senderPublicKey,
-        receiver.publicKey AS recipientPublicKey,
+        json_extract(sender_data.data, '$.donor') AS senderPublicKey,
+        json_extract(receiver_data.data, '$.recipient') AS recipientPublicKey,
         t.memo,
         t.status,
         t.timestamp,
         t.stellar_tx_id AS transactionHash
-      FROM transactions t
-      LEFT JOIN users sender ON t.senderId = sender.id
-      LEFT JOIN users receiver ON t.receiverId = receiver.id
-      WHERE 1=1
+      FROM donations_store t
+      LEFT JOIN donations_store sender_data ON t.donor = sender_data.donor
+      LEFT JOIN donations_store receiver_data ON t.recipient = receiver_data.recipient
+      WHERE t.deleted_at IS NULL
     `;
     const params = [];
 
@@ -274,49 +339,41 @@ class DonationExportService {
       params.push(filters.endDate);
     }
     if (filters.status) {
-      query += ' AND t.status = ?';
+      query += ' AND json_extract(t.data, "$.status") = ?';
       params.push(filters.status);
     }
     if (filters.senderPublicKey) {
-      query += ' AND sender.publicKey = ?';
+      query += ' AND t.donor = ?';
       params.push(filters.senderPublicKey);
     }
     if (filters.recipientPublicKey) {
-      query += ' AND receiver.publicKey = ?';
+      query += ' AND t.recipient = ?';
       params.push(filters.recipientPublicKey);
     }
 
     query += ' ORDER BY t.timestamp DESC';
 
-    return await Database.all(query, params);
+    return { sql: query, params };
   }
 
   /**
-   * Convert donations to CSV format.
-   * @param {Array} donations - Donation records
-   * @returns {string} CSV content
+   * Serialize a single row to CSV format.
+   * Handles quoting and escaping for CSV compliance.
+   * @param {Object} row - Data row
+   * @param {Array} headers - Column headers
+   * @returns {string} CSV line
    */
-  static convertToCSV(donations) {
-    const headers = [
-      'id',
-      'amount',
-      'senderPublicKey',
-      'recipientPublicKey',
-      'memo',
-      'status',
-      'timestamp',
-      'transactionHash',
-    ];
-    return csvSerialize(headers, donations);
-  }
-
-  /**
-   * Convert donations to JSON format.
-   * @param {Array} donations - Donation records
-   * @returns {string} JSON content
-   */
-  static convertToJSON(donations) {
-    return JSON.stringify(donations, null, 2);
+  static serializeCSVRow(row, headers) {
+    return headers.map(header => {
+      const value = row[header];
+      if (value === null || value === undefined) return '';
+      const stringValue = String(value);
+      // Quote if contains comma, quote, or newline
+      if (stringValue.includes(',') || stringValue.includes('"') || stringValue.includes('\n')) {
+        return `"${stringValue.replace(/"/g, '""')}"`;
+      }
+      return stringValue;
+    }).join(',');
   }
 
   /**

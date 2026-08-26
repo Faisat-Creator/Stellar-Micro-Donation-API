@@ -937,6 +937,39 @@ class Database {
   }
 
   /**
+   * Execute a query and process each row with a callback function.
+   * Rows are processed sequentially to avoid memory bloat on large result sets.
+   *
+   * @param {string} sql - SQL query statement
+   * @param {Array} params - Query parameters
+   * @param {Function} callback - Function called for each row: (row, rowIndex) => void
+   * @returns {Promise<number>} Total number of rows processed
+   */
+  static async each(sql, params = [], callback) {
+    await this.ensureInitialized();
+    const lease = await this.acquireConnection();
+    const db = lease.db;
+
+    return new Promise((resolve, reject) => {
+      let rowCount = 0;
+
+      db.each(sql, params, (err, row) => {
+        if (err) return reject(Database.mapDatabaseError(err, 'Row processing failed'));
+        try {
+          callback(row, rowCount);
+          rowCount++;
+        } catch (callbackErr) {
+          return reject(callbackErr);
+        }
+      }, (err) => {
+        if (err) return reject(Database.mapDatabaseError(err, 'Query iteration failed'));
+        lease.release().catch(() => {});
+        resolve(rowCount);
+      });
+    });
+  }
+
+  /**
    * Execute multiple operations within a single SQLite transaction on one connection.
    * All operations either commit or rollback together.
    *
