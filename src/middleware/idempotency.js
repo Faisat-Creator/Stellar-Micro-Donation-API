@@ -55,6 +55,7 @@ async function requireIdempotency(req, res, next) {
 
     if (existing) {
       log.info('IDEMPOTENCY', 'Returning cached response', { idempotencyKey, apiKeyId });
+      res.setHeader('X-Idempotency-Replayed', 'true');
       return res.status(200).json({
         ...existing.response,
         _idempotent: true,
@@ -94,6 +95,7 @@ async function requireIdempotency(req, res, next) {
       // It completed while we were checking — return the completed response
       const completed = await IdempotencyService.get(idempotencyKey, apiKeyId);
       if (completed) {
+        res.setHeader('X-Idempotency-Replayed', 'true');
         return res.status(200).json({
           ...completed.response,
           _idempotent: true,
@@ -207,6 +209,7 @@ async function conditionalIdempotency(req, res, next) {
     const existing = await IdempotencyService.get(idempotencyKey, apiKeyId);
     if (existing) {
       log.info('IDEMPOTENCY', 'Returning cached response', { idempotencyKey, apiKeyId });
+      res.setHeader('X-Idempotency-Replayed', 'true');
       return res.status(200).json({
         ...existing.response,
         _idempotent: true,
