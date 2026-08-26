@@ -126,6 +126,7 @@ module.exports = {
     'no-console': 'off',
     'local/require-async-handler': 'error',
     'local/no-floating-promises': 'error',
+    'local/consistent-exports': 'error',
   },
   overrides: [
     {
