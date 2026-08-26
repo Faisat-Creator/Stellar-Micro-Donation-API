@@ -160,6 +160,9 @@ module.exports = {
         'src/services/**/*.js',
         'src/jobs/**/*.js',
         'src/workers/**/*.js',
+        'src/utils/**/*.js',
+        'src/middleware/**/*.js',
+        'src/routes/**/*.js',
       ],
       excludedFiles: [
         'src/services/MockStellarService.js',
