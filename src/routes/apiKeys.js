@@ -94,7 +94,7 @@ router.post('/', requireAdmin(), apiKeyCreateSchema, payloadSizeLimiter(ENDPOINT
     }
 
     // Validate scopes
-    const scopeValidation = validateScopes(scopes);
+    const scopeValidation = validateScopes(scopes || []);
     if (!scopeValidation.valid) {
       throw new ValidationError(`Invalid scopes: ${scopeValidation.errors.join('; ')}`);
     }

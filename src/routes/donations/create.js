@@ -20,6 +20,7 @@ const router = express.Router();
 const requireApiKey = require('../../middleware/apiKey');
 const { requireIdempotency, storeIdempotencyResponse } = require('../../middleware/idempotency');
 const { checkPermission } = require('../../middleware/rbac');
+const { rotationLockMiddleware } = require('../../middleware/rotationLock');
 const { PERMISSIONS } = require('../../utils/permissions');
 const { ValidationError, ERROR_CODES } = require('../../utils/errors');
 const log = require('../../utils/log');
@@ -60,7 +61,7 @@ const stellarService = getStellarService();
  * Requires idempotency key to prevent duplicate transactions.
  * Rate limited: 10 requests per minute per IP.
  */
-router.post('/send', payloadSizeLimiter(ENDPOINT_LIMITS.singleDonation), donationRateLimiter, requireIdempotency, sendDonationSchema, async (req, res, next) => {
+router.post('/send', rotationLockMiddleware(), payloadSizeLimiter(ENDPOINT_LIMITS.singleDonation), donationRateLimiter, requireIdempotency, sendDonationSchema, async (req, res, next) => {
   try {
     const { senderId, receiverId, amount, memo, campaign_id } = req.body;
 
@@ -276,13 +277,13 @@ async function processCustodialDonation(req, res, next) {
  * both senderId and receiverId are present.
  * Requires Idempotency-Key header (UUID v4) to prevent duplicate donations.
  */
-router.post('/', payloadSizeLimiter(ENDPOINT_LIMITS.singleDonation), donationRateLimiter, perKeyRateLimit, requireApiKey, requireIdempotency, createDonationSchema, async (req, res, next) => {
+router.post('/', rotationLockMiddleware(), payloadSizeLimiter(ENDPOINT_LIMITS.singleDonation), donationRateLimiter, perKeyRateLimit, requireApiKey, requireIdempotency, createDonationSchema, async (req, res, next) => {
   try {
     if (req.body.senderId != null && req.body.receiverId != null) {
       return await processCustodialDonation(req, res, next);
     }
 
-    const { amount, currency, donor, recipient, memo, memoType, notes, tags, encryptMemo, anonymous, sourceAsset, sourceAmount } = req.body;
+    const { amount, currency, donor, recipient, memo, memoType, notes, tags, encryptMemo, anonymous, sourceAsset, sourceAmount, sendAsset, receiveAsset, slippageTolerance } = req.body;
 
     if (!amount || !recipient) {
       throw new ValidationError('Missing required fields: amount, recipient', null, ERROR_CODES.MISSING_REQUIRED_FIELD);
@@ -310,6 +311,32 @@ router.post('/', payloadSizeLimiter(ENDPOINT_LIMITS.singleDonation), donationRat
         return res.status(400).json({
           error: `Invalid sourceAmount: ${sourceAmountValidation.error}`
         });
+      }
+    }
+
+    let normalizedSendAsset = null;
+    let normalizedReceiveAsset = null;
+    let normalizedSlippageTolerance = null;
+    if (sendAsset || receiveAsset) {
+      if (!sendAsset || !receiveAsset) {
+        return res.status(400).json({
+          success: false,
+          error: { code: 'VALIDATION_ERROR', message: 'Both sendAsset and receiveAsset must be provided for cross-asset donations' }
+        });
+      }
+      normalizedSendAsset = parseAssetInput(sendAsset, 'sendAsset');
+      normalizedReceiveAsset = parseAssetInput(receiveAsset, 'receiveAsset');
+
+      if (slippageTolerance !== undefined && slippageTolerance !== null) {
+        if (typeof slippageTolerance !== 'number' || slippageTolerance < 0 || slippageTolerance > 1) {
+          return res.status(400).json({
+            success: false,
+            error: { code: 'VALIDATION_ERROR', message: 'slippageTolerance must be a number between 0 and 1' }
+          });
+        }
+        normalizedSlippageTolerance = slippageTolerance;
+      } else {
+        normalizedSlippageTolerance = 0.01;
       }
     }
 
@@ -356,6 +383,9 @@ router.post('/', payloadSizeLimiter(ENDPOINT_LIMITS.singleDonation), donationRat
       memo,
       sourceAsset: normalizedSourceAsset,
       sourceAmount: sourceAmountValidation ? sourceAmountValidation.value : undefined,
+      sendAsset: normalizedSendAsset,
+      receiveAsset: normalizedReceiveAsset,
+      slippageTolerance: normalizedSlippageTolerance,
       memoType: memoType || 'text',
       notes,
       tags,
@@ -409,7 +439,7 @@ router.post('/', payloadSizeLimiter(ENDPOINT_LIMITS.singleDonation), donationRat
  * Create up to 100 donations in a single request.
  * Rate limited: 1 batch request per minute per IP.
  */
-router.post('/batch', payloadSizeLimiter(ENDPOINT_LIMITS.batchDonation), batchRateLimiter, requireApiKey, async (req, res, next) => {
+router.post('/batch', rotationLockMiddleware(), payloadSizeLimiter(ENDPOINT_LIMITS.batchDonation), batchRateLimiter, requireApiKey, async (req, res, next) => {
   try {
     const { donations } = req.body;
 
@@ -567,7 +597,7 @@ router.post('/batch', requireApiKey, batchRateLimiter, checkPermission(PERMISSIO
  * Up to 50 items; concurrency controlled by BULK_DONATION_CONCURRENCY env var.
  * Requires donations:create permission.
  */
-router.post('/bulk', checkPermission(PERMISSIONS.DONATIONS_CREATE), payloadSizeLimiter(ENDPOINT_LIMITS.batchDonation), asyncHandler(async (req, res, next) => {
+router.post('/bulk', rotationLockMiddleware(), checkPermission(PERMISSIONS.DONATIONS_CREATE), payloadSizeLimiter(ENDPOINT_LIMITS.batchDonation), asyncHandler(async (req, res, next) => {
   try {
     const { donations } = req.body || {};
 
@@ -678,7 +708,7 @@ router.post('/bulk', checkPermission(PERMISSIONS.DONATIONS_CREATE), payloadSizeL
  * Execute a cross-asset donation via Stellar DEX path payment.
  * The transaction must be built and signed client-side (pre-signed XDR).
  */
-router.post('/cross-asset', payloadSizeLimiter(ENDPOINT_LIMITS.singleDonation), donationRateLimiter, requireApiKey, requireIdempotency, crossAssetSchema, asyncHandler(async (req, res, next) => {
+router.post('/cross-asset', rotationLockMiddleware(), payloadSizeLimiter(ENDPOINT_LIMITS.singleDonation), donationRateLimiter, requireApiKey, requireIdempotency, crossAssetSchema, asyncHandler(async (req, res, next) => {
   try {
     const { signedXDR, destPublicKey } = req.body;
 

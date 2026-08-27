@@ -3,7 +3,7 @@
 /**
  * OpenAPI Specification Generator
  *
- * RESPONSIBILITY: Generate OpenAPI 3.0 spec from JSDoc annotations in route files.
+ * RESPONSIBILITY: Generate OpenAPI 3.1 spec from JSDoc annotations in route files.
  * OWNER: Platform Team
  *
  * Usage:
@@ -18,7 +18,7 @@ const path = require('path');
 
 const options = {
   definition: {
-    openapi: '3.0.0',
+    openapi: '3.1.0',
     info: {
       title: 'Stellar Micro-Donation API',
       version: '1.0.0',
@@ -163,16 +163,27 @@ const options = {
     path.join(__dirname, '../routes/donation.js'),
     path.join(__dirname, '../routes/donations/notes.js'),
     path.join(__dirname, '../routes/wallet.js'),
+    path.join(__dirname, '../routes/wallets/*.js'),
     path.join(__dirname, '../routes/stream.js'),
     path.join(__dirname, '../routes/transaction.js'),
     path.join(__dirname, '../routes/stats.js'),
     path.join(__dirname, '../app.js'),
     path.join(__dirname, '../routes/liquidity-pools.js'),
+    path.join(__dirname, '../routes/campaigns.js'),
+    path.join(__dirname, '../routes/assets.js'),
+    path.join(__dirname, '../routes/tiers.js'),
+    path.join(__dirname, '../routes/offers.js'),
+    path.join(__dirname, '../routes/leaderboard.js'),
+    path.join(__dirname, '../routes/tags.js'),
+    path.join(__dirname, '../routes/receipt.js'),
+    path.join(__dirname, '../routes/disputes.js'),
+    path.join(__dirname, '../routes/recurringDonation.js'),
+    path.join(__dirname, '../routes/auth.js'),
     path.join(__dirname, '../routes/admin/auditLogExport.js'),
   ],
 };
 
-/** @type {object} Generated OpenAPI 3.0 specification */
+/** @type {object} Generated OpenAPI 3.1 specification */
 let spec = swaggerJsdoc(options);
 
 /**

@@ -1,10 +1,24 @@
 'use strict';
 
 const { getRateLimitStore } = require('./RateLimitStore');
-const { buildRateLimitHeaders, calculateRetryAfter } = require('./rateLimitHeaders');
+const { calculateRetryAfter } = require('./rateLimitHeaders');
 
 const DEFAULT_RATE_LIMIT = 100;
 const DEFAULT_WINDOW_SECONDS = 60;
+
+function buildRateLimitHeaders(limit, remaining, resetAt) {
+  const resetSeconds = typeof resetAt === 'number' ? Math.ceil(resetAt / 1000) : resetAt;
+  return {
+    // IETF standard headers
+    'RateLimit-Limit': String(limit),
+    'RateLimit-Remaining': String(Math.max(0, remaining)),
+    'RateLimit-Reset': String(resetSeconds),
+    // Legacy X-RateLimit-* headers for backward compatibility
+    'X-RateLimit-Limit': String(limit),
+    'X-RateLimit-Remaining': String(Math.max(0, remaining)),
+    'X-RateLimit-Reset': String(resetSeconds),
+  };
+}
 
 let _store = null;
 function getStore() {

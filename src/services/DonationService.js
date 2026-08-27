@@ -710,6 +710,9 @@ class DonationService {
     anonymous = false,
     sourceAsset,
     sourceAmount,
+    sendAsset,
+    receiveAsset,
+    slippageTolerance,
     validAfter = 0,
     validBefore = 0,
     memoEnvelope = null,
@@ -803,11 +806,22 @@ class DonationService {
     }
 
     const sourceAssetProvided = sourceAsset !== undefined && sourceAsset !== null;
-    const normalizedDestAsset = DEFAULT_DESTINATION_ASSET;
-    const normalizedSourceAsset = sourceAssetProvided
+    const sendAssetProvided = sendAsset !== undefined && sendAsset !== null;
+    const receiveAssetProvided = receiveAsset !== undefined && receiveAsset !== null;
+
+    let normalizedDestAsset = DEFAULT_DESTINATION_ASSET;
+    let normalizedSourceAsset = sourceAssetProvided
       ? parseAssetInput(sourceAsset, 'sourceAsset')
       : normalizedDestAsset;
+
+    // Handle sendAsset/receiveAsset for path payment donations
+    if (sendAssetProvided && receiveAssetProvided) {
+      normalizedSourceAsset = parseAssetInput(sendAsset, 'sendAsset');
+      normalizedDestAsset = parseAssetInput(receiveAsset, 'receiveAsset');
+    }
+
     const normalizedSourceAmount = sourceAmount ?? xlmAmount;
+    const normalizedSlippageTolerance = slippageTolerance ?? 0.01;
     const sourceSecret = this.resolvePaymentSourceSecret(sanitizedDonor);
     let stellarResult = null;
     let paymentMethod = 'record_only';
@@ -823,12 +837,15 @@ class DonationService {
 
     if (sourceSecret && sanitizedRecipient && !requiresApproval) {
       await this.checkRecipientAccountExists(sanitizedRecipient);
-      if (!sourceAssetProvided) {
+
+      const isPathPayment = sourceAssetProvided || (sendAssetProvided && receiveAssetProvided && !isSameAsset(normalizedSourceAsset, normalizedDestAsset));
+
+      if (!isPathPayment) {
         // Set correlation ID on StellarService for this request
         if (correlationId) {
           this.stellarService.setCorrelationId(correlationId);
         }
-        
+
         stellarResult = await this.stellarService.sendDonation({
           sourceSecret,
           destinationPublic: sanitizedRecipient,
@@ -845,6 +862,11 @@ class DonationService {
           this.stellarService.setCorrelationId(correlationId);
         }
         
+        // Set correlation ID on StellarService for this request
+        if (correlationId) {
+          this.stellarService.setCorrelationId(correlationId);
+        }
+
         const estimate = await this.stellarService.discoverBestPath({
           sourceAsset: normalizedSourceAsset,
           sourceAmount: normalizedSourceAmount.toString(),
@@ -859,12 +881,16 @@ class DonationService {
         selectedPath = estimate.path || [];
         conversionRate = estimate.conversionRate;
 
+        // Apply slippage tolerance to minimum destination amount
+        const estimatedDestAmount = parseFloat(estimate.destAmount);
+        const minDestAmount = estimatedDestAmount * (1 - normalizedSlippageTolerance);
+
         try {
           stellarResult = await this.stellarService.pathPayment(
             normalizedSourceAsset,
             normalizedSourceAmount.toString(),
             normalizedDestAsset,
-            estimate.destAmount,
+            minDestAmount.toString(),
             selectedPath,
             {
               sourceSecret,

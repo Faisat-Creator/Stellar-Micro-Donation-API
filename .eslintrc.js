@@ -126,6 +126,7 @@ module.exports = {
     'no-console': 'off',
     'local/require-async-handler': 'error',
     'local/no-floating-promises': 'error',
+    'local/consistent-exports': 'error',
   },
   overrides: [
     {
@@ -160,6 +161,9 @@ module.exports = {
         'src/services/**/*.js',
         'src/jobs/**/*.js',
         'src/workers/**/*.js',
+        'src/utils/**/*.js',
+        'src/middleware/**/*.js',
+        'src/routes/**/*.js',
       ],
       excludedFiles: [
         'src/services/MockStellarService.js',

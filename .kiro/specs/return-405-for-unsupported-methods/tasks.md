@@ -6,12 +6,12 @@ This plan implements router-level HTTP method handling that returns 405 Method N
 
 ## Tasks
 
-- [ ] 1. Add METHOD_NOT_ALLOWED error code
+- [x] 1. Add METHOD_NOT_ALLOWED error code
   - Add METHOD_NOT_ALLOWED error code to ERROR_CODES in src/utils/errors.js with numeric code 3006
   - _Requirements: 1.1, 2.1_
 
-- [ ] 2. Create method registry and utilities
-  - [ ] 2.1 Create method registry module
+- [x] 2. Create method registry and utilities
+  - [x] 2.1 Create method registry module
     - Create src/middleware/methodRegistry.js
     - Implement Map-based registry to track HTTP methods per route path
     - Implement normalizePath function to handle trailing slashes and ensure leading slash
@@ -20,16 +20,16 @@ This plan implements router-level HTTP method handling that returns 405 Method N
     - Export methodRegistry, registerMethod, getSupportedMethods, findMatchingRoute functions
     - _Requirements: 4.1, 4.2_
   
-  - [ ]* 2.2 Write property test for path normalization
+  - [x]* 2.2 Write property test for path normalization
     - **Property: Path normalization consistency**
     - **Validates: Requirements 4.1**
   
-  - [ ]* 2.3 Write property test for route pattern matching
+  - [x]* 2.3 Write property test for route pattern matching
     - **Property: Route pattern matching with parameters**
     - **Validates: Requirements 4.2**
 
-- [ ] 3. Implement method checking middleware
-  - [ ] 3.1 Create methodNotAllowedHandler middleware
+- [x] 3. Implement method checking middleware
+  - [x] 3.1 Create methodNotAllowedHandler middleware
     - Create src/middleware/methodNotAllowedHandler.js
     - Check if request path matches any registered route using findMatchingRoute
     - If no match, call next() to proceed to 404 handler
@@ -40,73 +40,73 @@ This plan implements router-level HTTP method handling that returns 405 Method N
     - Include requestId and timestamp in error response
     - _Requirements: 1.1, 1.2, 2.1, 2.2, 2.3, 2.4_
   
-  - [ ]* 3.2 Write property test for 405 responses
+  - [x]* 3.2 Write property test for 405 responses
     - **Property 1: Known routes with unsupported methods return 405 with accurate Allow header**
     - **Validates: Requirements 1.1, 2.1, 2.2, 2.3, 2.4**
   
-  - [ ]* 3.3 Write unit tests for method checking middleware
+  - [x]* 3.3 Write unit tests for method checking middleware
     - Test specific examples: GET /wallets (supported), DELETE /wallets (unsupported)
     - Test trailing slash handling: /wallets vs /wallets/
     - Test parameterized routes: /wallets/:id with different IDs
     - Test case sensitivity: GET vs get
     - _Requirements: 1.1, 1.2, 2.1, 2.2_
 
-- [ ] 4. Implement OPTIONS handler
-  - [ ] 4.1 Create OPTIONS handler middleware
+- [x] 4. Implement OPTIONS handler
+  - [x] 4.1 Create OPTIONS handler middleware
     - Create src/middleware/optionsHandler.js or add to methodNotAllowedHandler.js
     - Intercept OPTIONS requests to known routes
     - Return 200 OK with Allow header listing all supported methods
     - If route not found, call next() to proceed to 404
     - _Requirements: 5.1, 5.2, 5.3_
   
-  - [ ]* 4.2 Write property test for OPTIONS support
+  - [x]* 4.2 Write property test for OPTIONS support
     - **Property 4: OPTIONS returns 200 with accurate Allow header**
     - **Validates: Requirements 5.1, 5.2, 5.3**
   
-  - [ ]* 4.3 Write unit tests for OPTIONS handler
+  - [x]* 4.3 Write unit tests for OPTIONS handler
     - Test OPTIONS on known routes returns 200 with Allow header
     - Test OPTIONS on unknown routes returns 404
     - Verify OPTIONS includes itself in Allow header
     - _Requirements: 5.1, 5.2, 5.3_
 
-- [ ] 5. Integrate registry with route registration
-  - [ ] 5.1 Wrap route registration in bootstrap
+- [x] 5. Integrate registry with route registration
+  - [x] 5.1 Wrap route registration in bootstrap
     - Modify src/bootstrap/routes.js to populate method registry during route mounting
     - For each route in V1_ROUTES and ADMIN_ROUTES, extract and register HTTP methods
     - Handle Express Router objects that may have multiple methods per path
     - Automatically add OPTIONS to all registered routes
     - _Requirements: 4.1, 4.2, 4.4_
   
-  - [ ]* 5.2 Write integration tests for route registration
+  - [x]* 5.2 Write integration tests for route registration
     - Test that mounting routes populates method registry
     - Test that registry contains correct methods for sample routes
     - Test that new routes are automatically included
     - _Requirements: 4.1, 4.2, 4.4_
 
-- [ ] 6. Wire middleware into request pipeline
-  - [ ] 6.1 Add middleware to bootstrap
+- [x] 6. Wire middleware into request pipeline
+  - [x] 6.1 Add middleware to bootstrap
     - Import methodNotAllowedHandler and optionsHandler in src/bootstrap/routes.js
     - Insert optionsHandler before methodNotAllowedHandler
     - Insert methodNotAllowedHandler after all route registrations but before notFoundHandler
     - Ensure order: routes → optionsHandler → methodNotAllowedHandler → notFoundHandler → errorHandler
     - _Requirements: 1.1, 3.1, 5.1_
   
-  - [ ]* 6.2 Write integration tests for middleware ordering
+  - [x]* 6.2 Write integration tests for middleware ordering
     - Test that 405 middleware runs before 404 handler
     - Test that OPTIONS handler runs before 405 middleware
     - Test that route handlers run before 405 middleware for supported methods
     - _Requirements: 1.1, 1.2_
 
-- [ ] 7. Add comprehensive test coverage
-  - [ ]* 7.1 Write property test for unknown routes
+- [x] 7. Add comprehensive test coverage
+  - [x]* 7.1 Write property test for unknown routes
     - **Property 2: Unknown routes return 404 without Allow header**
     - **Validates: Requirements 3.1, 3.2**
   
-  - [ ]* 7.2 Write property test for supported methods
+  - [x]* 7.2 Write property test for supported methods
     - **Property 3: Supported methods are processed normally**
     - **Validates: Requirements 1.2**
   
-  - [ ]* 7.3 Write end-to-end tests for representative routes
+  - [x]* 7.3 Write end-to-end tests for representative routes
     - Test read-only route (GET /api/v1/docs/validation-errors)
     - Test write route (POST /api/v1/wallets)
     - Test mixed route (GET, PATCH /api/v1/wallets/:id)
@@ -114,7 +114,7 @@ This plan implements router-level HTTP method handling that returns 405 Method N
     - Verify each returns correct Allow header
     - _Requirements: 6.1, 6.4, 6.5_
 
-- [ ] 8. Final checkpoint
+- [x] 8. Final checkpoint
   - Ensure all tests pass
   - Verify 405 responses include correct Allow headers
   - Verify 404 responses do not include Allow headers

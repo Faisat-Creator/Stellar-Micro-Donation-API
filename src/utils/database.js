@@ -538,6 +538,32 @@ class Database {
   }
 
   /**
+   * Query database pragmas to report active journal mode and sync settings.
+   * Used for startup diagnostics (#1483).
+   *
+   * @returns {Promise<{journalMode: string, synchronous: string, autoVacuum: string}>} Pragma values.
+   */
+  static async getDiagnosticPragmas() {
+    try {
+      const journalRow = await this.get('PRAGMA journal_mode');
+      const syncRow = await this.get('PRAGMA synchronous');
+      const vacuumRow = await this.get('PRAGMA auto_vacuum');
+
+      return {
+        journalMode: journalRow?.journal_mode || 'UNKNOWN',
+        synchronous: syncRow?.synchronous || 'UNKNOWN',
+        autoVacuum: vacuumRow?.auto_vacuum || 'UNKNOWN',
+      };
+    } catch (err) {
+      return {
+        journalMode: 'ERROR',
+        synchronous: 'ERROR',
+        autoVacuum: 'ERROR',
+      };
+    }
+  }
+
+  /**
    * Ensure the pool is initialized exactly once.
    *
    * @returns {Promise<void>} Resolves when initialization completes.
@@ -934,6 +960,39 @@ class Database {
    */
   static async all(sql, params = []) {
     return this.query(sql, params);
+  }
+
+  /**
+   * Execute a query and process each row with a callback function.
+   * Rows are processed sequentially to avoid memory bloat on large result sets.
+   *
+   * @param {string} sql - SQL query statement
+   * @param {Array} params - Query parameters
+   * @param {Function} callback - Function called for each row: (row, rowIndex) => void
+   * @returns {Promise<number>} Total number of rows processed
+   */
+  static async each(sql, params = [], callback) {
+    await this.ensureInitialized();
+    const lease = await this.acquireConnection();
+    const db = lease.db;
+
+    return new Promise((resolve, reject) => {
+      let rowCount = 0;
+
+      db.each(sql, params, (err, row) => {
+        if (err) return reject(Database.mapDatabaseError(err, 'Row processing failed'));
+        try {
+          callback(row, rowCount);
+          rowCount++;
+        } catch (callbackErr) {
+          return reject(callbackErr);
+        }
+      }, (err) => {
+        if (err) return reject(Database.mapDatabaseError(err, 'Query iteration failed'));
+        lease.release().catch(() => {});
+        resolve(rowCount);
+      });
+    });
   }
 
   /**
