@@ -13,6 +13,7 @@ const PERMISSIONS = {
   DONATIONS_UPDATE: 'donations:update',
   DONATIONS_DELETE: 'donations:delete',
   DONATIONS_VERIFY: 'donations:verify',
+  DONATIONS_APPROVE: 'donations:approve',
 
   // Wallet permissions
   WALLETS_CREATE: 'wallets:create',
@@ -45,6 +46,7 @@ const PERMISSIONS = {
 const ROLES = {
   ADMIN: 'admin',
   USER: 'user',
+  SIGNER: 'signer',
   GUEST: 'guest'
 };
 

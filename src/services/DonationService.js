@@ -789,7 +789,9 @@ class DonationService {
       ? receivedAmount
       : amount;
 
-    const overpayment = buildOverpaymentRecord(effectiveReceived, amount, feeCalculation.fee);
+    // feeCalculation.fee is an XLM display string (calculateAnalyticsFee() does all
+    // arithmetic in integer stroops) — buildOverpaymentRecord() requires a number.
+    const overpayment = buildOverpaymentRecord(effectiveReceived, amount, Number(feeCalculation.fee));
 
     if (overpayment) {
       log.warn('DONATION_SERVICE', 'Overpayment detected', {
@@ -827,7 +829,13 @@ class DonationService {
     let selectedPath = [];
     let conversionRate = null;
 
-    if (sourceSecret && sanitizedRecipient) {
+    // #1498 — donations above MULTISIG_THRESHOLD_XLM are queued for signer
+    // approval instead of being submitted to Stellar immediately.
+    const multisigConfig = require('../config').donations;
+    const requiresApproval = multisigConfig.multisigThresholdXLM !== null
+      && xlmAmount > multisigConfig.multisigThresholdXLM;
+
+    if (sourceSecret && sanitizedRecipient && !requiresApproval) {
       await this.checkRecipientAccountExists(sanitizedRecipient);
 
       const isPathPayment = sourceAssetProvided || (sendAssetProvided && receiveAssetProvided && !isSameAsset(normalizedSourceAsset, normalizedDestAsset));
@@ -952,7 +960,15 @@ class DonationService {
       encryptionMetadata: encryptionMetadata || null,
       analyticsFee: feeCalculation.fee,
       analyticsFeePercentage: feeCalculation.feePercentage,
-      status: stellarResult ? TRANSACTION_STATES.CONFIRMED : TRANSACTION_STATES.PENDING,
+      status: requiresApproval
+        ? TRANSACTION_STATES.AWAITING_APPROVAL
+        : (stellarResult ? TRANSACTION_STATES.CONFIRMED : TRANSACTION_STATES.PENDING),
+      requiresApproval,
+      requiredApprovals: requiresApproval ? multisigConfig.multisigRequiredApprovals : null,
+      approvals: requiresApproval ? [] : null,
+      approvalExpiresAt: requiresApproval
+        ? new Date(Date.now() + multisigConfig.multisigApprovalWindowMs).toISOString()
+        : null,
       stellarTxId: stellarResult ? stellarResult.transactionId : null,
       stellarLedger: stellarResult ? stellarResult.ledger : null,
       confirmedAt: stellarResult ? new Date().toISOString() : null,
@@ -977,42 +993,48 @@ class DonationService {
       sdgCategories: sdgCategories || [],
     });
 
-    if (campaign_id) {
-      await this.processCampaignContribution(campaign_id, xlmAmount).catch(err => {
-        log.error('DONATION_SERVICE', 'Failed to update campaign contribution', { error: err.message });
-      });
-    }
-
-    // Process donation matching programs (non-blocking)
-    try {
-      const matchingResults = await MatchingProgramService.processMatchingDonation({
-        id: transaction.id,
-        amount: xlmAmount,
-        campaign_id: campaign_id || null
-      });
-      if (matchingResults.length > 0) {
-        transaction.matchingDonations = matchingResults;
+    // Campaign contribution, donation matching, and corporate matching all move
+    // real funds/credits attributed to this donation — they're deferred until
+    // the donation actually clears (i.e. skipped here while awaiting approval,
+    // and run instead by approveDonation() once the required signers sign off).
+    if (!requiresApproval) {
+      if (campaign_id) {
+        await this.processCampaignContribution(campaign_id, xlmAmount).catch(err => {
+          log.error('DONATION_SERVICE', 'Failed to update campaign contribution', { error: err.message });
+        });
       }
-    } catch (err) {
-      log.error('DONATION_SERVICE', 'Failed to process donation matching', { error: err.message });
-    }
 
-    // Process corporate matching programs (non-blocking)
-    try {
-      // Get sender user ID from public key
-      const senderUser = await Database.get('SELECT id FROM users WHERE publicKey = ?', [sanitizedDonor]);
-      if (senderUser) {
-        const corporateMatchingResults = await CorporateMatchingService.processCorporateMatching({
+      // Process donation matching programs (non-blocking)
+      try {
+        const matchingResults = await MatchingProgramService.processMatchingDonation({
           id: transaction.id,
           amount: xlmAmount,
-          senderId: senderUser.id
+          campaign_id: campaign_id || null
         });
-        if (corporateMatchingResults.length > 0) {
-          transaction.corporateMatchingDonations = corporateMatchingResults;
+        if (matchingResults.length > 0) {
+          transaction.matchingDonations = matchingResults;
         }
+      } catch (err) {
+        log.error('DONATION_SERVICE', 'Failed to process donation matching', { error: err.message });
       }
-    } catch (err) {
-      log.error('DONATION_SERVICE', 'Failed to process corporate matching', { error: err.message });
+
+      // Process corporate matching programs (non-blocking)
+      try {
+        // Get sender user ID from public key
+        const senderUser = await Database.get('SELECT id FROM users WHERE publicKey = ?', [sanitizedDonor]);
+        if (senderUser) {
+          const corporateMatchingResults = await CorporateMatchingService.processCorporateMatching({
+            id: transaction.id,
+            amount: xlmAmount,
+            senderId: senderUser.id
+          });
+          if (corporateMatchingResults.length > 0) {
+            transaction.corporateMatchingDonations = corporateMatchingResults;
+          }
+        }
+      } catch (err) {
+        log.error('DONATION_SERVICE', 'Failed to process corporate matching', { error: err.message });
+      }
     }
 
     // Detect memo collision after the record is created so we have a transactionId
@@ -1061,6 +1083,175 @@ class DonationService {
     }
 
     return transaction;
+  }
+
+  /**
+   * Record a signer's approval on a donation awaiting multi-sig approval
+   * (#1498). Once the configured number of approvals is reached, the
+   * donation is submitted to Stellar and its deferred follow-up processing
+   * (campaign contribution, donation matching) runs.
+   *
+   * @param {string} id - Donation id
+   * @param {Object} params
+   * @param {string} params.signerKeyId - Identifier of the approving signer (e.g. their Stellar public key)
+   * @param {string} [params.requestId] - Request id for audit logging
+   * @returns {Promise<{transaction: Object, approvalsCount: number, required: number, fullyApproved: boolean}>}
+   */
+  async approveDonation(id, { signerKeyId, requestId = null } = {}) {
+    const AuditLogService = require('./AuditLogService');
+
+    if (!signerKeyId || typeof signerKeyId !== 'string') {
+      throw new ValidationError('signerKeyId is required', null, ERROR_CODES.MISSING_REQUIRED_FIELD);
+    }
+
+    const transaction = Transaction.getById(id);
+    if (!transaction) {
+      throw new NotFoundError('Donation not found', ERROR_CODES.DONATION_NOT_FOUND);
+    }
+
+    if (transaction.status !== TRANSACTION_STATES.AWAITING_APPROVAL) {
+      throw new BusinessLogicError(
+        ERROR_CODES.INVALID_STATE_TRANSITION,
+        `Donation ${id} is not awaiting approval (current status: ${transaction.status})`
+      );
+    }
+
+    // Expire on access if the approval window has already lapsed rather than
+    // waiting for the next background sweep.
+    if (transaction.approvalExpiresAt && new Date(transaction.approvalExpiresAt) <= new Date()) {
+      Transaction.updateStatus(id, TRANSACTION_STATES.EXPIRED, {});
+      throw new BusinessLogicError(
+        ERROR_CODES.DONATION_APPROVAL_EXPIRED,
+        `Donation ${id} approval window has expired`
+      );
+    }
+
+    const existingApprovals = transaction.approvals || [];
+    if (existingApprovals.some(a => a.signerKeyId === signerKeyId)) {
+      throw new ValidationError(
+        `${signerKeyId} has already approved this donation`,
+        null,
+        ERROR_CODES.DONATION_ALREADY_APPROVED_BY_SIGNER
+      );
+    }
+
+    const approvals = [...existingApprovals, { signerKeyId, approvedAt: new Date().toISOString() }];
+    let updated = Transaction.updateApprovals(id, approvals);
+    const required = transaction.requiredApprovals || require('../config').donations.multisigRequiredApprovals;
+
+    await AuditLogService.log({
+      category: AuditLogService.CATEGORY.FINANCIAL_OPERATION,
+      action: 'DONATION_APPROVAL_RECORDED',
+      severity: AuditLogService.SEVERITY.HIGH,
+      result: 'SUCCESS',
+      requestId,
+      resource: `donation:${id}`,
+      details: { donationId: id, signerKeyId, approvalsCount: approvals.length, required },
+    }).catch(() => {});
+
+    const fullyApproved = approvals.length >= required;
+
+    if (fullyApproved) {
+      const sourceSecret = this.resolvePaymentSourceSecret(updated.donor);
+      let stellarResult;
+      try {
+        const asset = updated.sourceAsset ? parseAssetInput(updated.sourceAsset, 'sourceAsset') : undefined;
+        stellarResult = await this.stellarService.sendDonation({
+          sourceSecret,
+          destinationPublic: updated.recipient,
+          amount: String(updated.sourceAmount || updated.amount),
+          memo: updated.memo,
+          ...(asset ? { asset } : {}),
+        });
+      } catch (err) {
+        Transaction.updateStatus(id, TRANSACTION_STATES.FAILED, {});
+        await AuditLogService.log({
+          category: AuditLogService.CATEGORY.FINANCIAL_OPERATION,
+          action: 'DONATION_APPROVAL_SUBMISSION_FAILED',
+          severity: AuditLogService.SEVERITY.HIGH,
+          result: 'FAILURE',
+          requestId,
+          resource: `donation:${id}`,
+          details: { donationId: id, error: err.message },
+        }).catch(() => {});
+        throw new BusinessLogicError(
+          ERROR_CODES.TRANSACTION_FAILED,
+          `Approved donation ${id} failed to submit: ${err.message}`
+        );
+      }
+
+      updated = Transaction.updateStatus(id, TRANSACTION_STATES.CONFIRMED, {
+        transactionId: stellarResult.transactionId,
+        ledger: stellarResult.ledger,
+        confirmedAt: new Date().toISOString(),
+      });
+
+      await AuditLogService.log({
+        category: AuditLogService.CATEGORY.FINANCIAL_OPERATION,
+        action: 'DONATION_APPROVED_AND_SUBMITTED',
+        severity: AuditLogService.SEVERITY.HIGH,
+        result: 'SUCCESS',
+        requestId,
+        resource: `donation:${id}`,
+        details: { donationId: id, stellarTxId: stellarResult.transactionId, approvals: approvals.length },
+      }).catch(() => {});
+
+      if (updated.campaign_id) {
+        await this.processCampaignContribution(updated.campaign_id, parseFloat(updated.amount)).catch(err => {
+          log.error('DONATION_SERVICE', 'Failed to update campaign contribution after approval', { error: err.message });
+        });
+      }
+
+      try {
+        const matchingResults = await MatchingProgramService.processMatchingDonation({
+          id: updated.id,
+          amount: parseFloat(updated.amount),
+          campaign_id: updated.campaign_id || null,
+        });
+        if (matchingResults.length > 0) {
+          updated.matchingDonations = matchingResults;
+        }
+      } catch (err) {
+        log.error('DONATION_SERVICE', 'Failed to process donation matching after approval', { error: err.message });
+      }
+    }
+
+    return { transaction: updated, approvalsCount: approvals.length, required, fullyApproved };
+  }
+
+  /**
+   * Expire donations that have been awaiting approval longer than their
+   * configured window (default 72h, #1498). Intended to be invoked
+   * periodically by a background worker.
+   *
+   * @param {Date} [now]
+   * @returns {Promise<{expired: number}>}
+   */
+  async expireOverdueApprovals(now = new Date()) {
+    const AuditLogService = require('./AuditLogService');
+    const pending = Transaction.getByStatus(TRANSACTION_STATES.AWAITING_APPROVAL);
+    let expired = 0;
+
+    for (const tx of pending) {
+      if (tx.approvalExpiresAt && new Date(tx.approvalExpiresAt) <= now) {
+        Transaction.updateStatus(tx.id, TRANSACTION_STATES.EXPIRED, {});
+        await AuditLogService.log({
+          category: AuditLogService.CATEGORY.FINANCIAL_OPERATION,
+          action: 'DONATION_APPROVAL_EXPIRED',
+          severity: AuditLogService.SEVERITY.MEDIUM,
+          result: 'SUCCESS',
+          resource: `donation:${tx.id}`,
+          details: { donationId: tx.id, approvalExpiresAt: tx.approvalExpiresAt },
+        }).catch(() => {});
+        expired++;
+      }
+    }
+
+    if (expired > 0) {
+      log.info('DONATION_SERVICE', `Expired ${expired} donation(s) awaiting approval`, { expired });
+    }
+
+    return { expired };
   }
 
   /**

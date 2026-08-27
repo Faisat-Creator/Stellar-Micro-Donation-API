@@ -420,6 +420,27 @@ class Transaction {
       .reduce((total, t) => total + t.amount, 0);
   }
 
+  /**
+   * Record a signer approval on a donation awaiting multi-sig approval (#1498).
+   * Does not itself advance `status` — the caller (DonationService) decides
+   * whether the collected approvals meet the required threshold and, if so,
+   * transitions the record via updateStatus() after submitting to Stellar.
+   *
+   * @param {string} id
+   * @param {Object[]} approvals - Full updated approvals array
+   * @returns {Object} Updated transaction
+   */
+  static updateApprovals(id, approvals) {
+    const tx = _store.get(id);
+    if (!tx) throw new Error(`Transaction not found: ${id}`);
+
+    const updated = { ...tx, approvals };
+
+    _store.set(id, updated);
+    _persist(updated);
+    return updated;
+  }
+
   static updateNftData(id, nftData) {
     const tx = _store.get(id);
     if (!tx) throw new Error(`Transaction not found: ${id}`);

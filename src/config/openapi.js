@@ -161,7 +161,7 @@ const options = {
   },
   apis: [
     path.join(__dirname, '../routes/donation.js'),
-    path.join(__dirname, '../routes/donations/*.js'),
+    path.join(__dirname, '../routes/donations/notes.js'),
     path.join(__dirname, '../routes/wallet.js'),
     path.join(__dirname, '../routes/wallets/*.js'),
     path.join(__dirname, '../routes/stream.js'),

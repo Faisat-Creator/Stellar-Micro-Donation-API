@@ -6,6 +6,7 @@ const TRANSACTION_STATES = Object.freeze({
   SUBMITTED: 'submitted',
   CONFIRMED: 'confirmed',
   FAILED: 'failed',
+  EXPIRED: 'expired',
 });
 
 const LEGACY_STATE_ALIASES = Object.freeze({
@@ -34,6 +35,7 @@ const VALID_TRANSITIONS = Object.freeze({
     TRANSACTION_STATES.FAILED,
   ]),
   [TRANSACTION_STATES.FAILED]: new Set(),
+  [TRANSACTION_STATES.EXPIRED]: new Set(),
 });
 
 const normalizeState = (state) => {

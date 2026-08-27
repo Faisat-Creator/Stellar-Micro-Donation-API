@@ -361,7 +361,7 @@ function validatePagination(limit, offset, options = {}) {
  * @returns {{valid: boolean, error?: string}}
  */
 function validateRole(role) {
-  const validRoles = ['admin', 'user', 'guest'];
+  const validRoles = ['admin', 'user', 'signer', 'guest'];
   return validateEnum(role, validRoles, { caseInsensitive: false });
 }
 

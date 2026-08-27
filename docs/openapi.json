@@ -327,6 +327,66 @@
         ]
       }
     },
+    "/donations/{id}/approve": {
+      "post": {
+        "description": "Donations above the configured MULTISIG_THRESHOLD_XLM are created with status `awaiting_approval` instead of being submitted immediately. Each call records one signer's approval; once the required number of distinct signers have approved, the donation is submitted to Stellar automatically. Requires the `donations:approve` permission (granted to the `signer` and `admin` roles).\n",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "signerKeyId": {
+                    "description": "Identifier of the approving signer (e.g. their Stellar public key)",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "signerKeyId"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Approval recorded (and donation submitted if fully approved)"
+          },
+          "400": {
+            "description": "Validation error (missing signerKeyId, duplicate approval)"
+          },
+          "403": {
+            "description": "Caller lacks the donations:approve permission"
+          },
+          "404": {
+            "description": "Donation not found"
+          },
+          "422": {
+            "description": "Donation is not currently awaiting approval, or the approval window has expired"
+          }
+        },
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "summary": "Record a multi-signer approval for a high-value donation (#1498)",
+        "tags": [
+          "Donations"
+        ]
+      }
+    },
     "/liquidity-pools/deposit": {
       "post": {
         "requestBody": {

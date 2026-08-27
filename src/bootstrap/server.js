@@ -119,7 +119,7 @@ async function startServer(app, overrideServices = {}) {
 
 
     let cleanupInterval = null;
-    let replayCleanupTimer = null;
+    let _replayCleanupTimer = null;
 
     // ── Async initialisation after port is bound ───────────────────────────────
     // /health/ready returns false until this block completes.
@@ -179,7 +179,7 @@ async function startServer(app, overrideServices = {}) {
           server.stopQuotaResetJob = stopQuotaResetJob;
 
           require('../workers/expiryWorker').start();
-          require('../workers/webhookRetryWorker').start();
+          require('../workers/donationApprovalExpiryWorker').start();
           recurringDonationScheduler.start();
           reconciliationService.start();
           auditLogRetentionService.start();
@@ -211,7 +211,7 @@ async function startServer(app, overrideServices = {}) {
 
         const { startCleanup } = require('../utils/replayDetector');
         const replayConfig = require('../config/replayDetection');
-        replayCleanupTimer = startCleanup(replayDetectionMiddleware.trackingStore, replayConfig);
+        _replayCleanupTimer = startCleanup(replayDetectionMiddleware.trackingStore, replayConfig);
 
         try {
           const LeaderboardSSE = require('../services/LeaderboardSSE');
@@ -340,7 +340,7 @@ async function startServer(app, overrideServices = {}) {
         retentionService.stop();
         transactionSyncScheduler.stop();
         require('../workers/expiryWorker').stop();
-        require('../workers/webhookRetryWorker').stop();
+        require('../workers/donationApprovalExpiryWorker').stop();
 
         if (server.stopQuotaResetJob) {
           server.stopQuotaResetJob();
