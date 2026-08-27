@@ -292,26 +292,24 @@ class DonationService {
     // Decrypt sender's secret key
     const secret = encryption.decrypt(sender.encryptedSecret);
 
-    // Check sender balance before submitting (max 2s to avoid slowing donation flow)
+    // Check sender balance and minimum reserve before submitting (max 2s to avoid slowing donation flow)
     try {
-      const { balance } = await withTimeout(
-        this.stellarService.getBalance(sender.publicKey),
+      const reserveCheck = await withTimeout(
+        this.stellarService.accounts.checkDonationReserve(sender.publicKey, parseFloat(amount)),
         2000,
-        'balanceCheck'
+        'reserveCheck'
       );
-      const available = parseFloat(balance);
-      const reserve = parseFloat(process.env.STELLAR_BASE_RESERVE || '1');
-      const required = parseFloat(amount) + reserve;
-      if (available < required) {
+      
+      if (!reserveCheck.sufficient) {
         throw new BusinessLogicError(
-          ERROR_CODES.INSUFFICIENT_BALANCE,
-          `Insufficient balance. Required: ${required.toFixed(7)} XLM, Available: ${available.toFixed(7)} XLM`
+          ERROR_CODES.INSUFFICIENT_BALANCE_AFTER_RESERVE,
+          `Insufficient balance after reserve. Your account must maintain a minimum reserve of ${reserveCheck.minimumReserve.toFixed(7)} XLM (base reserve + ${reserveCheck.subentryCount} subentries). Current balance: ${reserveCheck.currentBalance.toFixed(7)} XLM. Maximum safe donation: ${reserveCheck.maxSafeDonation.toFixed(7)} XLM.`
         );
       }
     } catch (err) {
       if (err instanceof BusinessLogicError) throw err;
-      // Balance check timed out or failed — log and proceed optimistically
-      log.warn('DONATION_SERVICE', 'Balance check skipped', { requestId, error: err.message });
+      // Reserve check timed out or failed — log and proceed optimistically
+      log.warn('DONATION_SERVICE', 'Reserve check skipped', { requestId, error: err.message });
     }
 
     log.debug('DONATION_SERVICE', 'Initiating Stellar transaction', {
