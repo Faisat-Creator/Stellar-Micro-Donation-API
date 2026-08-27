@@ -188,22 +188,62 @@ class RetentionService {
   }
 
   /**
-   * Run all three retention jobs and return a combined summary.
-   * @returns {Promise<{donations: Object, auditLogs: Object, idempotencyKeys: Object}>}
+   * Hard-delete cancelled recurring donation schedules older than RETENTION_DONATIONS_DAYS.
+   * Cancelled schedules are soft-deleted (status='cancelled', cancelledAt set) to preserve
+   * audit trail, but old ones can be hard-deleted after the retention period.
+   * @returns {Promise<{purged: number, remaining: number, durationMs: number}>}
+   */
+  async runCancelledSchedulesRetention() {
+    const retentionDays = resolveRetentionDays('donations');
+    if (retentionDays === 0) return { purged: 0, remaining: 0, durationMs: 0 };
+
+    const start = Date.now();
+    const cutoff = cutoffDate(retentionDays);
+
+    let purged = 0;
+    if (!this.dryRun) {
+      const result = await Database.run(
+        `DELETE FROM recurring_donations WHERE status = 'cancelled' AND cancelledAt < ?`,
+        [cutoff]
+      ).catch(() => ({ changes: 0 }));
+      purged = result && result.changes != null ? result.changes : 0;
+    } else {
+      const preview = await Database.get(
+        `SELECT COUNT(*) as n FROM recurring_donations WHERE status = 'cancelled' AND cancelledAt < ?`,
+        [cutoff]
+      ).catch(() => ({ n: 0 }));
+      purged = preview.n;
+    }
+
+    const remaining = await Database.get(
+      'SELECT COUNT(*) as n FROM recurring_donations WHERE status = \'cancelled\''
+    ).catch(() => ({ n: 0 }));
+    const durationMs = Date.now() - start;
+    log.info('RETENTION_SERVICE', this.dryRun ? '[DRY RUN] Would hard-delete cancelled schedules' : 'Hard-deleted cancelled schedules', {
+      dataType: 'cancelledSchedules', purged, remaining: remaining.n, retentionDays, cutoff, durationMs,
+    });
+    return { purged, remaining: remaining.n, durationMs };
+  }
+
+  /**
+   * Run all four retention jobs and return a combined summary.
+   * @returns {Promise<{donations: Object, auditLogs: Object, idempotencyKeys: Object, cancelledSchedules: Object}>}
    */
   async runAll() {
     const runStart = Date.now();
-    const [donations, auditLogs, idempotencyKeys] = await Promise.all([
+    const [donations, auditLogs, idempotencyKeys, cancelledSchedules] = await Promise.all([
       this.runDonationRetention(),
       this.runAuditLogRetention(),
       this.runIdempotencyRetention(),
+      this.runCancelledSchedulesRetention(),
     ]);
     log.info('RETENTION_SERVICE', 'Full retention run complete', {
       donations: donations.purged, auditLogs: auditLogs.purged,
-      idempotencyKeys: idempotencyKeys.purged, totalDurationMs: Date.now() - runStart,
+      idempotencyKeys: idempotencyKeys.purged, cancelledSchedules: cancelledSchedules.purged,
+      totalDurationMs: Date.now() - runStart,
       dryRun: this.dryRun,
     });
-    return { donations, auditLogs, idempotencyKeys };
+    return { donations, auditLogs, idempotencyKeys, cancelledSchedules };
   }
 
   /**
