@@ -477,17 +477,53 @@ class WalletService {
     if (!wallet) {
       throw new NotFoundError('Wallet not found', ERROR_CODES.WALLET_NOT_FOUND);
     }
+  /**
+   * Set a data entry on a Stellar account using ManageDataOperation.
+   * @param {string|number} walletId - Wallet ID
+   * @param {string} secretKey - Secret key of the wallet
+   * @param {string} key - Data entry key (max 64 bytes)
+   * @param {string|Buffer} value - Data entry value (max 64 bytes)
+   * @returns {Promise<{hash: string, ledger: number}>}
+   */
+  async setAccountData(walletId, secretKey, key, value) {
+    if (!this.stellarService) {
+      throw new ValidationError('Stellar service not available', null, ERROR_CODES.SERVICE_UNAVAILABLE);
+    }
+
+    const wallet = this.getWalletById(walletId);
+    if (!wallet) {
+      throw new NotFoundError('Wallet not found', ERROR_CODES.WALLET_NOT_FOUND);
+    }
+
+    // Call Stellar service to set the data entry
+    const result = await this.stellarService.accounts.setAccountData(secretKey, key, value);
+    return result;
+  }
+
+  /**
+   * Delete a data entry from a Stellar account by setting its value to null.
+   * @param {string|number} walletId - Wallet ID
+   * @param {string} secretKey - Secret key of the wallet
+   * @param {string} key - Data entry key to delete
+   * @returns {Promise<{hash: string, ledger: number}>}
+   */
+  async deleteAccountData(walletId, secretKey, key) {
+    if (!this.stellarService) {
+      throw new ValidationError('Stellar service not available', null, ERROR_CODES.SERVICE_UNAVAILABLE);
+    }
+
+    const wallet = this.getWalletById(walletId);
+    if (!wallet) {
+      throw new NotFoundError('Wallet not found', ERROR_CODES.WALLET_NOT_FOUND);
+    }
 
     // Call Stellar service to delete the data entry
-    const result = await this.stellarService.deleteDataEntry(secretKey, key);
+    const result = await this.stellarService.accounts.deleteAccountData(secretKey, key);
     return result;
   }
 
   /**
    * Get all account data entries for a wallet (from on-chain Horizon API)
-   * Note: This requires querying the Stellar network, which will be called
-   * by StellarService if we implement a getAccountData method.
-   * For now, returns data from the mock service for testing.
    * @param {string|number} walletId - Wallet ID
    * @returns {Promise<Object>} Account data entries
    */
@@ -502,7 +538,7 @@ class WalletService {
     }
 
     const publicKey = wallet.address || wallet.publicKey;
-    const entries = await this.stellarService.getDataEntries(publicKey);
+    const entries = await this.stellarService.accounts.getAccountData(publicKey);
     return { entries };
   }
 }
