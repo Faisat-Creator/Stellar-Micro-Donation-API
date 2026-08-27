@@ -282,7 +282,7 @@ router.post('/', payloadSizeLimiter(ENDPOINT_LIMITS.singleDonation), donationRat
       return await processCustodialDonation(req, res, next);
     }
 
-    const { amount, currency, donor, recipient, memo, memoType, notes, tags, encryptMemo, anonymous, sourceAsset, sourceAmount } = req.body;
+    const { amount, currency, donor, recipient, memo, memoType, notes, tags, encryptMemo, anonymous, sourceAsset, sourceAmount, sendAsset, receiveAsset, slippageTolerance } = req.body;
 
     if (!amount || !recipient) {
       throw new ValidationError('Missing required fields: amount, recipient', null, ERROR_CODES.MISSING_REQUIRED_FIELD);
@@ -310,6 +310,32 @@ router.post('/', payloadSizeLimiter(ENDPOINT_LIMITS.singleDonation), donationRat
         return res.status(400).json({
           error: `Invalid sourceAmount: ${sourceAmountValidation.error}`
         });
+      }
+    }
+
+    let normalizedSendAsset = null;
+    let normalizedReceiveAsset = null;
+    let normalizedSlippageTolerance = null;
+    if (sendAsset || receiveAsset) {
+      if (!sendAsset || !receiveAsset) {
+        return res.status(400).json({
+          success: false,
+          error: { code: 'VALIDATION_ERROR', message: 'Both sendAsset and receiveAsset must be provided for cross-asset donations' }
+        });
+      }
+      normalizedSendAsset = parseAssetInput(sendAsset, 'sendAsset');
+      normalizedReceiveAsset = parseAssetInput(receiveAsset, 'receiveAsset');
+
+      if (slippageTolerance !== undefined && slippageTolerance !== null) {
+        if (typeof slippageTolerance !== 'number' || slippageTolerance < 0 || slippageTolerance > 1) {
+          return res.status(400).json({
+            success: false,
+            error: { code: 'VALIDATION_ERROR', message: 'slippageTolerance must be a number between 0 and 1' }
+          });
+        }
+        normalizedSlippageTolerance = slippageTolerance;
+      } else {
+        normalizedSlippageTolerance = 0.01;
       }
     }
 
@@ -356,6 +382,9 @@ router.post('/', payloadSizeLimiter(ENDPOINT_LIMITS.singleDonation), donationRat
       memo,
       sourceAsset: normalizedSourceAsset,
       sourceAmount: sourceAmountValidation ? sourceAmountValidation.value : undefined,
+      sendAsset: normalizedSendAsset,
+      receiveAsset: normalizedReceiveAsset,
+      slippageTolerance: normalizedSlippageTolerance,
       memoType: memoType || 'text',
       notes,
       tags,
