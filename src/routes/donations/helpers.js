@@ -73,7 +73,10 @@ const createDonationSchema = validateSchema({
       notes: { type: 'string', required: false, nullable: true },
       tags: { type: 'array', required: false, nullable: true },
       sourceAsset: { type: 'string', required: false, nullable: true },
-      sourceAmount: { types: ['number', 'numberString'], required: false, nullable: true }
+      sourceAmount: { types: ['number', 'numberString'], required: false, nullable: true },
+      sendAsset: { types: ['string', 'object'], required: false, nullable: true },
+      receiveAsset: { types: ['string', 'object'], required: false, nullable: true },
+      slippageTolerance: { type: 'number', required: false, nullable: true }
     }
   }
 });
