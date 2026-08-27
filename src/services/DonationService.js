@@ -333,6 +333,8 @@ class DonationService {
     // Record in database with sanitized memo — amount stored as integer stroops.
     // The totals table update is atomic with the transactions INSERT so that a
     // rollback can never leave totals incremented without a corresponding row.
+    // Issue #1591: All local database writes for a single Stellar transaction are
+    // wrapped in a transaction. If any write fails, the entire transaction rolls back.
     const amountStroops = Math.round(parseFloat(amount) * STROOPS_PER_XLM);
     const DonationTotalsRepository = require('./DonationTotalsRepository');
     const totalsRepo = new DonationTotalsRepository();

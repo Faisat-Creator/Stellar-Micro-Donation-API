@@ -51,6 +51,7 @@ const V1_ROUTES = [
   ['/auth',                           require('../routes/auth')],
   ['/docs',                           require('../routes/docs')],
   ['/transactions',                   require('../routes/transaction')],
+  ['/transactions/bump-sequence',     require('../routes/transactions/bump-sequence')],
   ['/claimable-balances',             require('../routes/claimableBalances')],
   ['/liquidity-pools',                require('../routes/liquidity-pools')],
 ];
