@@ -20,6 +20,7 @@ const router = express.Router();
 const requireApiKey = require('../../middleware/apiKey');
 const { requireIdempotency, storeIdempotencyResponse } = require('../../middleware/idempotency');
 const { checkPermission } = require('../../middleware/rbac');
+const { rotationLockMiddleware } = require('../../middleware/rotationLock');
 const { PERMISSIONS } = require('../../utils/permissions');
 const { ValidationError, ERROR_CODES } = require('../../utils/errors');
 const log = require('../../utils/log');
@@ -60,7 +61,7 @@ const stellarService = getStellarService();
  * Requires idempotency key to prevent duplicate transactions.
  * Rate limited: 10 requests per minute per IP.
  */
-router.post('/send', payloadSizeLimiter(ENDPOINT_LIMITS.singleDonation), donationRateLimiter, requireIdempotency, sendDonationSchema, async (req, res, next) => {
+router.post('/send', rotationLockMiddleware(), payloadSizeLimiter(ENDPOINT_LIMITS.singleDonation), donationRateLimiter, requireIdempotency, sendDonationSchema, async (req, res, next) => {
   try {
     const { senderId, receiverId, amount, memo, campaign_id } = req.body;
 
@@ -276,7 +277,7 @@ async function processCustodialDonation(req, res, next) {
  * both senderId and receiverId are present.
  * Requires Idempotency-Key header (UUID v4) to prevent duplicate donations.
  */
-router.post('/', payloadSizeLimiter(ENDPOINT_LIMITS.singleDonation), donationRateLimiter, perKeyRateLimit, requireApiKey, requireIdempotency, createDonationSchema, async (req, res, next) => {
+router.post('/', rotationLockMiddleware(), payloadSizeLimiter(ENDPOINT_LIMITS.singleDonation), donationRateLimiter, perKeyRateLimit, requireApiKey, requireIdempotency, createDonationSchema, async (req, res, next) => {
   try {
     if (req.body.senderId != null && req.body.receiverId != null) {
       return await processCustodialDonation(req, res, next);
@@ -409,7 +410,7 @@ router.post('/', payloadSizeLimiter(ENDPOINT_LIMITS.singleDonation), donationRat
  * Create up to 100 donations in a single request.
  * Rate limited: 1 batch request per minute per IP.
  */
-router.post('/batch', payloadSizeLimiter(ENDPOINT_LIMITS.batchDonation), batchRateLimiter, requireApiKey, async (req, res, next) => {
+router.post('/batch', rotationLockMiddleware(), payloadSizeLimiter(ENDPOINT_LIMITS.batchDonation), batchRateLimiter, requireApiKey, async (req, res, next) => {
   try {
     const { donations } = req.body;
 
@@ -567,7 +568,7 @@ router.post('/batch', requireApiKey, batchRateLimiter, checkPermission(PERMISSIO
  * Up to 50 items; concurrency controlled by BULK_DONATION_CONCURRENCY env var.
  * Requires donations:create permission.
  */
-router.post('/bulk', checkPermission(PERMISSIONS.DONATIONS_CREATE), payloadSizeLimiter(ENDPOINT_LIMITS.batchDonation), asyncHandler(async (req, res, next) => {
+router.post('/bulk', rotationLockMiddleware(), checkPermission(PERMISSIONS.DONATIONS_CREATE), payloadSizeLimiter(ENDPOINT_LIMITS.batchDonation), asyncHandler(async (req, res, next) => {
   try {
     const { donations } = req.body || {};
 
@@ -678,7 +679,7 @@ router.post('/bulk', checkPermission(PERMISSIONS.DONATIONS_CREATE), payloadSizeL
  * Execute a cross-asset donation via Stellar DEX path payment.
  * The transaction must be built and signed client-side (pre-signed XDR).
  */
-router.post('/cross-asset', payloadSizeLimiter(ENDPOINT_LIMITS.singleDonation), donationRateLimiter, requireApiKey, requireIdempotency, crossAssetSchema, asyncHandler(async (req, res, next) => {
+router.post('/cross-asset', rotationLockMiddleware(), payloadSizeLimiter(ENDPOINT_LIMITS.singleDonation), donationRateLimiter, requireApiKey, requireIdempotency, crossAssetSchema, asyncHandler(async (req, res, next) => {
   try {
     const { signedXDR, destPublicKey } = req.body;
 

@@ -175,6 +175,15 @@ async function getFullHealth(stellarService, networkStatusService, scheduler, ve
     if (stellarService && typeof stellarService.getPoolStatus === 'function') {
       response.horizonPool = stellarService.getPoolStatus();
     }
+
+    // Expose queue depth as a diagnostic signal
+    try {
+      const { getQueueDepth } = require('../utils/queuedDonationHandler');
+      const queueDepth = await getQueueDepth();
+      response.pendingDonations = queueDepth;
+    } catch (err) {
+      // Ignore errors fetching queue depth; it's not critical to health
+    }
   }
 
   return response;

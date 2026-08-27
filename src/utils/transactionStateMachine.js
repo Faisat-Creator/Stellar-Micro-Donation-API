@@ -2,6 +2,7 @@ const { ValidationError, ERROR_CODES } = require('./errors');
 
 const TRANSACTION_STATES = Object.freeze({
   PENDING: 'pending',
+  QUEUED: 'queued',
   SUBMITTED: 'submitted',
   CONFIRMED: 'confirmed',
   FAILED: 'failed',
@@ -14,8 +15,13 @@ const LEGACY_STATE_ALIASES = Object.freeze({
 
 const VALID_TRANSITIONS = Object.freeze({
   [TRANSACTION_STATES.PENDING]: new Set([
+    TRANSACTION_STATES.QUEUED,
     TRANSACTION_STATES.SUBMITTED,
     TRANSACTION_STATES.CONFIRMED,
+    TRANSACTION_STATES.FAILED,
+  ]),
+  [TRANSACTION_STATES.QUEUED]: new Set([
+    TRANSACTION_STATES.SUBMITTED,
     TRANSACTION_STATES.FAILED,
   ]),
   [TRANSACTION_STATES.SUBMITTED]: new Set([
