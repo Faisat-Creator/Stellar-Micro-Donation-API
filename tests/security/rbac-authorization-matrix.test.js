@@ -153,6 +153,14 @@ const MATRIX_ENTRIES = [
     allowedRoles: ['admin', 'user', 'guest', 'noauth'],
     deniedRoles:  [],
   },
+  // donations:approve (#1498) is only granted to admin and the dedicated
+  // 'signer' role — 'user' has no signer permission and must be denied.
+  {
+    method: 'POST',  path: '/api/v1/donations/999/approve',
+    permission: 'donations:approve',
+    allowedRoles: ['admin'],
+    deniedRoles:  ['user', 'guest', 'noauth'],
+  },
 
   // ── Wallet routes ─────────────────────────────────────────────────────────────
   {

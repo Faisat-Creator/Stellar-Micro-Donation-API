@@ -2,9 +2,11 @@ const { ValidationError, ERROR_CODES } = require('./errors');
 
 const TRANSACTION_STATES = Object.freeze({
   PENDING: 'pending',
+  AWAITING_APPROVAL: 'awaiting_approval',
   SUBMITTED: 'submitted',
   CONFIRMED: 'confirmed',
   FAILED: 'failed',
+  EXPIRED: 'expired',
 });
 
 const LEGACY_STATE_ALIASES = Object.freeze({
@@ -18,6 +20,14 @@ const VALID_TRANSITIONS = Object.freeze({
     TRANSACTION_STATES.CONFIRMED,
     TRANSACTION_STATES.FAILED,
   ]),
+  // A donation queued for multi-sig approval (#1498) either gets submitted
+  // once enough signers approve, or expires after the 72h approval window.
+  [TRANSACTION_STATES.AWAITING_APPROVAL]: new Set([
+    TRANSACTION_STATES.SUBMITTED,
+    TRANSACTION_STATES.CONFIRMED,
+    TRANSACTION_STATES.FAILED,
+    TRANSACTION_STATES.EXPIRED,
+  ]),
   [TRANSACTION_STATES.SUBMITTED]: new Set([
     TRANSACTION_STATES.CONFIRMED,
     TRANSACTION_STATES.FAILED,
@@ -28,6 +38,7 @@ const VALID_TRANSITIONS = Object.freeze({
     TRANSACTION_STATES.FAILED,
   ]),
   [TRANSACTION_STATES.FAILED]: new Set(),
+  [TRANSACTION_STATES.EXPIRED]: new Set(),
 });
 
 const normalizeState = (state) => {

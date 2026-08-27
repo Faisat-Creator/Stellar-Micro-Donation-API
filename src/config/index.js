@@ -311,7 +311,21 @@ const buildConfig = (env, isProduction, isTest) => {
     maxAmount: parseFloat(process.env.MAX_DONATION_AMOUNT, 10000, 0, null, 'MAX_DONATION_AMOUNT'),
     maxDailyPerDonor: parseFloat(process.env.MAX_DAILY_DONATION_PER_DONOR, 0, 0, null, 'MAX_DAILY_DONATION_PER_DONOR'),
     refundEligibilityWindowDays: parseInteger(process.env.REFUND_ELIGIBILITY_WINDOW_DAYS, 30, 1, null, 'REFUND_ELIGIBILITY_WINDOW_DAYS'),
+    // #1498 — donations above this XLM amount require multi-signer approval
+    // before submission instead of being processed immediately. `null` (the
+    // default, unset) disables the approval workflow entirely.
+    multisigThresholdXLM: parseFloat(process.env.MULTISIG_THRESHOLD_XLM, null, 0, null, 'MULTISIG_THRESHOLD_XLM'),
+    multisigRequiredApprovals: parseInteger(process.env.MULTISIG_REQUIRED_APPROVALS, 2, 2, 20, 'MULTISIG_REQUIRED_APPROVALS'),
+    multisigApprovalWindowMs: parseInteger(process.env.MULTISIG_APPROVAL_WINDOW_MS, 72 * 60 * 60 * 1000, 60000, null, 'MULTISIG_APPROVAL_WINDOW_MS'),
   };
+
+  // A threshold at/above the hard maximum can never be reached by a donation
+  // that would otherwise be accepted, silently disabling the feature.
+  if (donations.multisigThresholdXLM !== null && donations.multisigThresholdXLM >= donations.maxAmount) {
+    throw new ConfigurationError(
+      `MULTISIG_THRESHOLD_XLM (${donations.multisigThresholdXLM}) must be less than MAX_DONATION_AMOUNT (${donations.maxAmount})`
+    );
+  }
 
   // Fees configuration — single source of truth for fee defaults.
   // Hot-path magic numbers previously lived inline in src/routes/fees.js.

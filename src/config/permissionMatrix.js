@@ -83,6 +83,13 @@ const PERMISSION_MATRIX = {
     ],
     description: 'Standard user with donation and wallet management'
   },
+  signer: {
+    permissions: [
+      PERMISSIONS.DONATIONS_READ,
+      PERMISSIONS.DONATIONS_APPROVE
+    ],
+    description: 'Authorised multi-sig signer for high-value donation approvals'
+  },
   guest: {
     permissions: [
       PERMISSIONS.DONATIONS_READ,
@@ -105,6 +112,7 @@ const ROUTE_PERMISSIONS = [
   { method: 'GET', path: '/donations/recent', permission: PERMISSIONS.DONATIONS_READ },
   { method: 'GET', path: '/donations/:id', permission: PERMISSIONS.DONATIONS_READ },
   { method: 'PATCH', path: '/donations/:id/status', permission: PERMISSIONS.DONATIONS_UPDATE },
+  { method: 'POST', path: '/donations/:id/approve', permission: PERMISSIONS.DONATIONS_APPROVE },
   { method: 'GET', path: '/donations/stats/by-tag', permission: PERMISSIONS.STATS_READ },
 
   // Wallet routes

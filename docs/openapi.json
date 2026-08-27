@@ -10,7 +10,7 @@
         }
       },
       "XSchemaVersion": {
-        "description": "Request body schema version. Specify the schema version for request body validation. Defaults to version 1 if not provided. Supported versions are listed in the X-Schema-Version-Supported response header. Use this header to maintain backward compatibility when the API evolves.",
+        "description": "Request-body schema variant. Accepted values are full semver strings (e.g. \"1.0.0\", \"2.0.0\"). An integer shorthand (e.g. \"1\") is also accepted and is normalised to \"1.0.0\" for backward compatibility. Omitting this header selects the latest stable schema for the endpoint. Supported versions for a given endpoint are listed in the X-Schema-Version-Supported response header. NOTE: this header governs the request-body schema only — it is independent of the URL API version (/api/v1). The URL version changes only on breaking (MAJOR) API releases.",
         "schema": {
           "example": "1.0.0",
           "type": "string"
@@ -327,71 +327,31 @@
         ]
       }
     },
-    "/donations": {
-      "get": {
+    "/donations/{id}/approve": {
+      "post": {
+        "description": "Donations above the configured MULTISIG_THRESHOLD_XLM are created with status `awaiting_approval` instead of being submitted immediately. Each call records one signer's approval; once the required number of distinct signers have approved, the donation is submitted to Stellar automatically. Requires the `donations:approve` permission (granted to the `signer` and `admin` roles).\n",
         "parameters": [
           {
-            "description": "Maximum number of results",
-            "in": "query",
-            "name": "limit",
-            "schema": {
-              "type": "integer"
-            }
-          },
-          {
-            "description": "Pagination cursor",
-            "in": "query",
-            "name": "cursor",
+            "in": "path",
+            "name": "id",
+            "required": true,
             "schema": {
               "type": "string"
             }
           }
         ],
-        "responses": {
-          "200": {
-            "description": "List of donations"
-          },
-          "401": {
-            "description": "Unauthorized"
-          }
-        },
-        "security": [
-          {
-            "ApiKeyAuth": []
-          }
-        ],
-        "summary": "List all donations",
-        "tags": [
-          "Donations"
-        ]
-      },
-      "post": {
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
                 "properties": {
-                  "amount": {
-                    "description": "Amount in XLM",
-                    "type": "number"
-                  },
-                  "memo": {
-                    "description": "Optional transaction memo",
-                    "type": "string"
-                  },
-                  "recipientPublicKey": {
-                    "description": "Stellar public key of the recipient",
-                    "type": "string"
-                  },
-                  "senderSecret": {
-                    "description": "Stellar secret key of the sender",
+                  "signerKeyId": {
+                    "description": "Identifier of the approving signer (e.g. their Stellar public key)",
                     "type": "string"
                   }
                 },
                 "required": [
-                  "senderSecret",
-                  "recipientPublicKey",
-                  "amount"
+                  "signerKeyId"
                 ],
                 "type": "object"
               }
@@ -400,139 +360,20 @@
           "required": true
         },
         "responses": {
-          "201": {
-            "description": "Donation created successfully",
-            "headers": {
-              "X-Request-ID": {
-                "$ref": "#/components/headers/XRequestID"
-              }
-            }
+          "200": {
+            "description": "Approval recorded (and donation submitted if fully approved)"
           },
           "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            },
-            "description": "Validation error"
+            "description": "Validation error (missing signerKeyId, duplicate approval)"
           },
-          "401": {
-            "description": "Unauthorized"
-          }
-        },
-        "security": [
-          {
-            "ApiKeyAuth": []
-          }
-        ],
-        "summary": "Create a new donation",
-        "tags": [
-          "Donations"
-        ]
-      }
-    },
-    "/donations/limits": {
-      "get": {
-        "responses": {
-          "200": {
-            "description": "Donation limits"
-          }
-        },
-        "security": [
-          {
-            "ApiKeyAuth": []
-          }
-        ],
-        "summary": "Get donation amount limits",
-        "tags": [
-          "Donations"
-        ]
-      }
-    },
-    "/donations/recent": {
-      "get": {
-        "parameters": [
-          {
-            "in": "query",
-            "name": "limit",
-            "schema": {
-              "default": 10,
-              "type": "integer"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Recent donations"
-          }
-        },
-        "security": [
-          {
-            "ApiKeyAuth": []
-          }
-        ],
-        "summary": "Get recent donations",
-        "tags": [
-          "Donations"
-        ]
-      }
-    },
-    "/donations/verify": {
-      "post": {
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "properties": {
-                  "transactionHash": {
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "transactionHash"
-                ],
-                "type": "object"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Verification result"
-          }
-        },
-        "security": [
-          {
-            "ApiKeyAuth": []
-          }
-        ],
-        "summary": "Verify a transaction on the blockchain",
-        "tags": [
-          "Donations"
-        ]
-      }
-    },
-    "/donations/{id}": {
-      "get": {
-        "parameters": [
-          {
-            "in": "path",
-            "name": "id",
-            "required": true,
-            "schema": {
-              "type": "integer"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Donation details"
+          "403": {
+            "description": "Caller lacks the donations:approve permission"
           },
           "404": {
             "description": "Donation not found"
+          },
+          "422": {
+            "description": "Donation is not currently awaiting approval, or the approval window has expired"
           }
         },
         "security": [
@@ -540,61 +381,7 @@
             "ApiKeyAuth": []
           }
         ],
-        "summary": "Get a specific donation",
-        "tags": [
-          "Donations"
-        ]
-      }
-    },
-    "/donations/{id}/status": {
-      "patch": {
-        "parameters": [
-          {
-            "in": "path",
-            "name": "id",
-            "required": true,
-            "schema": {
-              "type": "integer"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "properties": {
-                  "status": {
-                    "enum": [
-                      "pending",
-                      "completed",
-                      "failed"
-                    ],
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "status"
-                ],
-                "type": "object"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Status updated"
-          },
-          "404": {
-            "description": "Donation not found"
-          }
-        },
-        "security": [
-          {
-            "ApiKeyAuth": []
-          }
-        ],
-        "summary": "Update donation status",
+        "summary": "Record a multi-signer approval for a high-value donation (#1498)",
         "tags": [
           "Donations"
         ]
@@ -1213,165 +1000,6 @@
           "Transactions"
         ]
       }
-    },
-    "/wallets": {
-      "get": {
-        "responses": {
-          "200": {
-            "description": "List of wallets"
-          }
-        },
-        "security": [
-          {
-            "ApiKeyAuth": []
-          }
-        ],
-        "summary": "List all wallets",
-        "tags": [
-          "Wallets"
-        ]
-      },
-      "post": {
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "properties": {
-                  "label": {
-                    "type": "string"
-                  },
-                  "publicKey": {
-                    "description": "Stellar public key",
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "publicKey"
-                ],
-                "type": "object"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "description": "Wallet created"
-          },
-          "400": {
-            "description": "Validation error"
-          }
-        },
-        "security": [
-          {
-            "ApiKeyAuth": []
-          }
-        ],
-        "summary": "Create wallet metadata",
-        "tags": [
-          "Wallets"
-        ]
-      }
-    },
-    "/wallets/{id}": {
-      "get": {
-        "parameters": [
-          {
-            "in": "path",
-            "name": "id",
-            "required": true,
-            "schema": {
-              "type": "integer"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Wallet details"
-          },
-          "404": {
-            "description": "Wallet not found"
-          }
-        },
-        "security": [
-          {
-            "ApiKeyAuth": []
-          }
-        ],
-        "summary": "Get a specific wallet",
-        "tags": [
-          "Wallets"
-        ]
-      },
-      "patch": {
-        "parameters": [
-          {
-            "in": "path",
-            "name": "id",
-            "required": true,
-            "schema": {
-              "type": "integer"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "properties": {
-                  "label": {
-                    "type": "string"
-                  }
-                },
-                "type": "object"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Wallet updated"
-          }
-        },
-        "security": [
-          {
-            "ApiKeyAuth": []
-          }
-        ],
-        "summary": "Update wallet metadata",
-        "tags": [
-          "Wallets"
-        ]
-      }
-    },
-    "/wallets/{publicKey}/transactions": {
-      "get": {
-        "parameters": [
-          {
-            "in": "path",
-            "name": "publicKey",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Transaction list"
-          }
-        },
-        "security": [
-          {
-            "ApiKeyAuth": []
-          }
-        ],
-        "summary": "Get all transactions for a wallet",
-        "tags": [
-          "Wallets"
-        ]
-      }
     }
   },
   "security": [
@@ -1389,10 +1017,6 @@
     {
       "description": "Create and manage donations on the Stellar network",
       "name": "Donations"
-    },
-    {
-      "description": "Wallet metadata management",
-      "name": "Wallets"
     },
     {
       "description": "Recurring donation schedules",

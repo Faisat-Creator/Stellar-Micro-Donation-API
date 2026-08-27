@@ -45,6 +45,13 @@
       ]
     },
     {
+      "name": "signer",
+      "permissions": [
+        "donations:read",
+        "donations:approve"
+      ]
+    },
+    {
       "name": "guest",
       "permissions": [
         "donations:read",

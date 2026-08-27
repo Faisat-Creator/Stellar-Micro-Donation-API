@@ -9,6 +9,7 @@
  *   GET    /donations/:id/certificate/ipfs  — IPFS certificate pinning
  *   GET    /donations/:id/impact            — real-world impact metrics
  *   PATCH  /donations/:id/status            — update donation status
+ *   POST   /donations/:id/approve           — record a multi-sig signer approval
  *   POST   /donations/:id/refund            — initiate refund
  *   GET    /donations/:id/tags              — list tags
  *   POST   /donations/:id/tags              — add tags
@@ -297,6 +298,82 @@ router.patch('/:id/status', checkPermission(PERMISSIONS.DONATIONS_UPDATE), updat
     res.json({
       success: true,
       data: applyNotePrivacy(req, updatedTransaction)
+    });
+  } catch (error) {
+    next(error);
+  }
+}));
+
+// ─── POST /donations/:id/approve ──────────────────────────────────────────────
+
+/**
+ * @openapi
+ * /donations/{id}/approve:
+ *   post:
+ *     tags: [Donations]
+ *     summary: Record a multi-signer approval for a high-value donation (#1498)
+ *     description: >
+ *       Donations above the configured MULTISIG_THRESHOLD_XLM are created with
+ *       status `awaiting_approval` instead of being submitted immediately.
+ *       Each call records one signer's approval; once the required number of
+ *       distinct signers have approved, the donation is submitted to Stellar
+ *       automatically. Requires the `donations:approve` permission (granted to
+ *       the `signer` and `admin` roles).
+ *     security:
+ *       - ApiKeyAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [signerKeyId]
+ *             properties:
+ *               signerKeyId:
+ *                 type: string
+ *                 description: Identifier of the approving signer (e.g. their Stellar public key)
+ *     responses:
+ *       200:
+ *         description: Approval recorded (and donation submitted if fully approved)
+ *       400:
+ *         description: Validation error (missing signerKeyId, duplicate approval)
+ *       403:
+ *         description: Caller lacks the donations:approve permission
+ *       404:
+ *         description: Donation not found
+ *       422:
+ *         description: Donation is not currently awaiting approval, or the approval window has expired
+ */
+router.post('/:id/approve', checkPermission(PERMISSIONS.DONATIONS_APPROVE), donationIdParamSchema, payloadSizeLimiter(ENDPOINT_LIMITS.singleDonation), asyncHandler(async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { signerKeyId } = req.body || {};
+
+    const result = await donationService.approveDonation(id, {
+      signerKeyId,
+      requestId: req.id,
+    });
+
+    if (req.markLifecycleStage) {
+      req.markLifecycleStage(LIFECYCLE_STAGES.PROCESSED);
+    }
+
+    res.json({
+      success: true,
+      data: {
+        donationId: id,
+        status: result.transaction.status,
+        approvalsCount: result.approvalsCount,
+        requiredApprovals: result.required,
+        fullyApproved: result.fullyApproved,
+        stellarTxId: result.transaction.stellarTxId || null,
+      },
     });
   } catch (error) {
     next(error);
