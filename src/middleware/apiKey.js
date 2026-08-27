@@ -195,7 +195,7 @@ const requireApiKey = async (req, res, next) => {
         return res.status(403).json({
           success: false,
           error: {
-            code: 'FORBIDDEN',
+            code: 'API_KEY_IP_RESTRICTED',
             message: 'IP address not permitted for this API key',
             requestId: req.id,
             timestamp: new Date().toISOString(),

@@ -22,6 +22,9 @@ const commands = {
     const name = args.name;
     const role = args.role || 'user';
     const expiresInDays = args.expires ? parseInt(args.expires, 10) : undefined;
+    const allowedIps = args['allowed-ips']
+      ? args['allowed-ips'].split(',').map(ip => ip.trim()).filter(ip => ip)
+      : null;
 
     if (!name) {
       console.error('Error: --name is required');
@@ -38,7 +41,8 @@ const commands = {
       role,
       expiresInDays,
       createdBy: 'cli',
-      metadata: { createdVia: 'cli' }
+      metadata: { createdVia: 'cli' },
+      allowedIps,
     });
 
     console.log('\n✓ API Key created successfully!\n');
@@ -51,6 +55,9 @@ const commands = {
     console.log('Created:', new Date(keyInfo.createdAt).toISOString());
     if (keyInfo.expiresAt) {
       console.log('Expires:', new Date(keyInfo.expiresAt).toISOString());
+    }
+    if (keyInfo.allowedIps && keyInfo.allowedIps.length > 0) {
+      console.log('Allowed IPs:', keyInfo.allowedIps.join(', '));
     }
     console.log('\n⚠️  IMPORTANT: Store this key securely. It will not be shown again.\n');
   },
@@ -149,6 +156,8 @@ Commands:
     --name <string>       Key name (required)
     --role <string>       Role: admin, user, guest (default: user)
     --expires <number>    Expiration in days (optional)
+    --allowed-ips <ips>   Comma-separated IP addresses/CIDR ranges (optional)
+                          Example: "192.168.1.0/24,10.0.0.1"
 
   list        List all API keys
     --status <string>     Filter by status: active, deprecated, revoked
@@ -167,6 +176,7 @@ Commands:
 
 Examples:
   node src/scripts/manageApiKeys.js create --name "Production API" --role admin --expires 365
+  node src/scripts/manageApiKeys.js create --name "Office API" --role user --allowed-ips "192.168.1.0/24,10.0.0.1"
   node src/scripts/manageApiKeys.js list --status active
   node src/scripts/manageApiKeys.js deprecate --id 1
   node src/scripts/manageApiKeys.js revoke --id 2
