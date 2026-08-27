@@ -28,6 +28,7 @@
     "check-coverage": "node scripts/check-coverage.js",
     "lint": "eslint .",
     "lint:security": "eslint . --ext .js --format stylish",
+    "typecheck": "tsc --noEmit",
     "security:scan": "node src/scripts/security-scan.js",
     "keys": "node src/scripts/manageApiKeys.js",
     "keys:create": "node src/scripts/manageApiKeys.js create",
@@ -84,6 +85,8 @@
   },
   "devDependencies": {
     "@babel/preset-env": "^7.29.7",
+    "@types/express": "^5.0.6",
+    "@types/node": "^26.3.0",
     "eslint": "8.57.1",
     "eslint-plugin-local": "file:./eslint-rules",
     "eslint-plugin-no-secrets": "^2.3.3",
@@ -93,6 +96,7 @@
     "madge": "^8.0.0",
     "nodemon": "^3.1.14",
     "sql.js": "^1.14.1",
-    "supertest": "^6.3.3"
+    "supertest": "^6.3.3",
+    "typescript": "^5.9.3"
   }
 }
