@@ -63,7 +63,7 @@ const stellarService = getStellarService();
  */
 router.post('/send', rotationLockMiddleware(), payloadSizeLimiter(ENDPOINT_LIMITS.singleDonation), donationRateLimiter, requireIdempotency, sendDonationSchema, async (req, res, next) => {
   try {
-    const { senderId, receiverId, amount, memo, campaign_id } = req.body;
+    const { senderId, receiverId, amount, memo, campaign_id, asset } = req.body;
 
     log.debug('DONATION_ROUTE', 'Processing donation request', {
       requestId: req.id,
@@ -129,6 +129,7 @@ router.post('/send', rotationLockMiddleware(), payloadSizeLimiter(ENDPOINT_LIMIT
       amount: amountValidation.xlm,
       memo,
       campaign_id,
+      asset: asset ? parseAssetInput(asset, 'asset') : null,
       idempotencyKey: req.idempotency.key,
       requestId: req.id,
       apiKeyId: req.apiKey ? req.apiKey.id : null,
@@ -185,7 +186,7 @@ router.post('/send', rotationLockMiddleware(), payloadSizeLimiter(ENDPOINT_LIMIT
 
 async function processCustodialDonation(req, res, next) {
   try {
-    const { senderId, receiverId, amount, memo } = req.body;
+    const { senderId, receiverId, amount, memo, asset } = req.body;
 
     if (!senderId || !receiverId || !amount) {
       return res.status(400).json({
@@ -250,6 +251,7 @@ async function processCustodialDonation(req, res, next) {
       receiverId,
       amount: amountValidation.xlm,
       memo: memo || null,
+      asset: asset ? parseAssetInput(asset, 'asset') : null,
       idempotencyKey: req.idempotency && req.idempotency.key,
       requestId: req.id,
     });
@@ -283,7 +285,7 @@ router.post('/', rotationLockMiddleware(), payloadSizeLimiter(ENDPOINT_LIMITS.si
       return await processCustodialDonation(req, res, next);
     }
 
-    const { amount, currency, donor, recipient, memo, memoType, notes, tags, encryptMemo, anonymous, sourceAsset, sourceAmount, sendAsset, receiveAsset, slippageTolerance } = req.body;
+    const { amount, currency, donor, recipient, memo, memoType, notes, tags, encryptMemo, anonymous, sourceAsset, sourceAmount, sendAsset, receiveAsset, slippageTolerance, asset } = req.body;
 
     if (!amount || !recipient) {
       throw new ValidationError('Missing required fields: amount, recipient', null, ERROR_CODES.MISSING_REQUIRED_FIELD);
@@ -317,6 +319,10 @@ router.post('/', rotationLockMiddleware(), payloadSizeLimiter(ENDPOINT_LIMITS.si
     let normalizedSendAsset = null;
     let normalizedReceiveAsset = null;
     let normalizedSlippageTolerance = null;
+    let customAsset = null;
+    if (asset) {
+      customAsset = parseAssetInput(asset, 'asset');
+    }
     if (sendAsset || receiveAsset) {
       if (!sendAsset || !receiveAsset) {
         return res.status(400).json({
@@ -385,6 +391,7 @@ router.post('/', rotationLockMiddleware(), payloadSizeLimiter(ENDPOINT_LIMITS.si
       sourceAmount: sourceAmountValidation ? sourceAmountValidation.value : undefined,
       sendAsset: normalizedSendAsset,
       receiveAsset: normalizedReceiveAsset,
+      asset: customAsset,
       slippageTolerance: normalizedSlippageTolerance,
       memoType: memoType || 'text',
       notes,

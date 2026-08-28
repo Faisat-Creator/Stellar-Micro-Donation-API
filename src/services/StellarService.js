@@ -362,6 +362,27 @@ class StellarService extends StellarServiceInterface {
   async claimBalance(claimantSecret, balanceId) { 
     return this.claimableBalances.claimBalance(claimantSecret, balanceId); 
   }
+
+  // Assets / trustlines
+  async addTrustline(accountSecret, assetCode, issuerPublic, limit = null) {
+    return this.assets.addTrustline(accountSecret, assetCode, issuerPublic, limit);
+  }
+  async removeTrustline(accountSecret, assetCode, issuerPublic) {
+    return this.assets.removeTrustline(accountSecret, assetCode, issuerPublic);
+  }
+  async getTrustlines(publicKey) { return this.assets.getTrustlines(publicKey); }
+  async issueAsset(issuerSecret, assetCode, amount, recipientPublic) {
+    return this.assets.issueAsset(issuerSecret, assetCode, amount, recipientPublic);
+  }
+  async burnAsset(holderSecret, assetCode, issuerPublic, amount) {
+    return this.assets.burnAsset(holderSecret, assetCode, issuerPublic, amount);
+  }
+  async clawback(issuerSecret, from, assetCode, amount) {
+    return this.assets.clawback(issuerSecret, from, assetCode, amount);
+  }
+  async distributeAsset(distributorSecret, assetCode, issuerPublicKey, recipientPublicKey, amount) {
+    return this.assets.distributeAsset(distributorSecret, assetCode, issuerPublicKey, recipientPublicKey, amount);
+  }
 }
 
 module.exports = StellarService;
