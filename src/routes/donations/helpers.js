@@ -76,7 +76,12 @@ const createDonationSchema = validateSchema({
       sourceAmount: { types: ['number', 'numberString'], required: false, nullable: true },
       sendAsset: { types: ['string', 'object'], required: false, nullable: true },
       receiveAsset: { types: ['string', 'object'], required: false, nullable: true },
-      slippageTolerance: { type: 'number', required: false, nullable: true }
+      slippageTolerance: { type: 'number', required: false, nullable: true },
+      validAfter: { types: ['number', 'numberString'], required: false, nullable: true },
+      validBefore: { types: ['number', 'numberString'], required: false, nullable: true },
+      validFrom: { type: 'dateString', required: false, nullable: true },
+      validUntil: { type: 'dateString', required: false, nullable: true },
+      contractAddress: { type: 'string', required: false, nullable: true, trim: true, minLength: 1 }
     }
   }
 });
