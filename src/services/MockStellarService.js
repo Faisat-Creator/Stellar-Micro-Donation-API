@@ -584,60 +584,32 @@ class MockStellarService extends StellarServiceInterface {
   async validateMergeEligibility(publicKey) { 
     return this.accounts.validateMergeEligibility(publicKey); 
   }
-  async invokeContract(contractId, method, args) {
-    if (!contractId) throw new Error('contractId is required');
-    if (!method) throw new Error('method is required');
-    if (!Array.isArray(args)) throw new Error('args must be an array');
-    if (!this._contracts) this._contracts = {};
-    if (!this._contractEvents) this._contractEvents = {};
-    if (!this._contracts[contractId]) {
-      const EscrowContract = require('../contracts/EscrowContract');
-      this._contracts[contractId] = new EscrowContract(Number(args[1]) || 100);
-    }
-    const contract = this._contracts[contractId];
-    if (!this._contractEvents[contractId]) this._contractEvents[contractId] = [];
-    let returnValue = null;
-    let events = [];
-    try {
-      if (method === 'deposit') {
-        const [donorId, amount] = args;
-        const result = contract.deposit(donorId, amount);
-        returnValue = result;
-        events = [{ contractId, type: 'deposit', topics: ['deposit', donorId], data: { donorId, amount }, timestamp: new Date().toISOString(), ledger: Date.now() }];
-      } else if (method === 'release') {
-        const [recipientId, goal] = args;
-        if (goal !== undefined) contract._goalAmount = goal;
-        const result = contract.release(recipientId);
-        returnValue = result;
-        events = result.events;
-      }
-    } catch (err) {
-      return { status: 'error', returnValue: err.message, transactionHash: null, ledger: null, events: [] };
-    }
-    const transactionHash = `mock-contract-tx-${contractId}-${method}-${Date.now()}`;
-    const ledger = Date.now();
-    this._contractEvents[contractId].push(...events);
-    return { status: 'success', returnValue, transactionHash, ledger, events };
-  }
 
-  async simulateContractInvocation(contractId, method, args) {
-    if (!contractId) throw new Error('contractId is required');
-    if (!method) throw new Error('method is required');
-    if (!Array.isArray(args)) throw new Error('args must be an array');
-    return { status: 'success', returnValue: null, cost: { cpuInsns: '1000', memBytes: '512' }, footprint: { readOnly: [], readWrite: [`contract:${contractId}`] } };
+  // Assets / trustlines
+  async addTrustline(accountSecretOrPublicKey, assetCodeOrAsset, issuerPublic, limit = null) {
+    return this.assets.addTrustline(accountSecretOrPublicKey, assetCodeOrAsset, issuerPublic, limit);
   }
-
-  async getContractState(contractId) {
-    if (!contractId) throw new Error('contractId is required');
-    if (!this._contracts || !this._contracts[contractId]) return [];
-    return Object.entries(this._contracts[contractId].getState()).map(([key, value]) => ({ key, value }));
+  async removeTrustline(accountSecretOrPublicKey, assetCodeOrAsset, issuerPublic) {
+    return this.assets.removeTrustline(accountSecretOrPublicKey, assetCodeOrAsset, issuerPublic);
   }
-
-  async getContractEvents(contractId, limit) {
-    if (!contractId) throw new Error('contractId is required');
-    const events = (this._contractEvents && this._contractEvents[contractId]) || [];
-    const sorted = [...events].sort((a, b) => b.ledger - a.ledger);
-    return limit !== undefined ? sorted.slice(0, limit) : sorted;
+  async getTrustlines(publicKey) { return this.assets.getTrustlines(publicKey); }
+  getTrustline(accountPublic, assetCode, issuerPublic) {
+    return this.assets.getTrustline(accountPublic, assetCode, issuerPublic);
+  }
+  async issueAsset(issuerSecret, assetCode, amount, recipientPublic) {
+    return this.assets.issueAsset(issuerSecret, assetCode, amount, recipientPublic);
+  }
+  async burnAsset(holderSecret, assetCode, issuerPublic, amount) {
+    return this.assets.burnAsset(holderSecret, assetCode, issuerPublic, amount);
+  }
+  async clawback(issuerSecret, from, assetCode, amount) {
+    return this.assets.clawback(issuerSecret, from, assetCode, amount);
+  }
+  async distributeAsset(distributorSecret, assetCode, issuerPublicKey, recipientPublicKey, amount) {
+    return this.assets.distributeAsset(distributorSecret, assetCode, issuerPublicKey, recipientPublicKey, amount);
+  }
+  getAssetHolders(assetCode, issuerPublic) {
+    return this.assets.getAssetHolders(assetCode, issuerPublic);
   }
 }
 

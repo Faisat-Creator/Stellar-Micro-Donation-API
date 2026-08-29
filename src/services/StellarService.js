@@ -364,58 +364,26 @@ class StellarService extends StellarServiceInterface {
   async claimBalance(claimantSecret, balanceId) { 
     return this.claimableBalances.claimBalance(claimantSecret, balanceId); 
   }
-  _sorobanValue(value) {
-    if (value && typeof value === 'object' && value._type) return value;
-    if (typeof value === 'boolean') return StellarSdk.nativeToScVal(value, { type: 'bool' });
-    if (typeof value === 'number' || (typeof value === 'string' && /^-?\d+$/.test(value))) return StellarSdk.nativeToScVal(String(value), { type: 'i128' });
-    return StellarSdk.nativeToScVal(String(value), { type: 'string' });
-  }
 
-  async invokeContract(contractId, method, args, sourceSecret) {
-    if (!contractId) throw new Error('contractId is required');
-    if (!method) throw new Error('method is required');
-    if (!Array.isArray(args)) throw new Error('args must be an array');
-    if (!sourceSecret) throw new Error('sourceSecret is required');
-    if (!StellarSdk.SorobanRpc) throw new Error('Soroban RPC is unavailable in this Stellar SDK');
-    const rpcUrl = this.sorobanRpcUrl || process.env.SOROBAN_RPC_URL || 'https://soroban-testnet.stellar.org';
-    const server = this.sorobanRpc || new StellarSdk.SorobanRpc.Server(rpcUrl);
-    const keypair = StellarSdk.Keypair.fromSecret(sourceSecret);
-    const account = await server.getAccount(keypair.publicKey());
-    const operation = new StellarSdk.Contract(contractId).call(method, ...args.map((value) => this._sorobanValue(value)));
-    let tx = new StellarSdk.TransactionBuilder(account, { fee: this.baseFee, networkPassphrase: this.networkPassphrase })
-      .addOperation(operation).setTimeout(30).build();
-    const simulation = await server.simulateTransaction(tx);
-    if (simulation.error) {
-      const error = new Error(simulation.error);
-      error.code = /insufficient|balance/i.test(String(simulation.error)) ? 'SOROBAN_INSUFFICIENT_BALANCE' : 'SOROBAN_SIMULATION_FAILED';
-      throw error;
-    }
-    tx = StellarSdk.SorobanRpc.assembleTransaction(tx, simulation).build();
-    tx.sign(keypair);
-    const submitted = await server.sendTransaction(tx);
-    if (submitted.status === 'ERROR') {
-      const error = new Error(submitted.errorResultXdr || 'Soroban transaction failed');
-      error.code = 'SOROBAN_TRANSACTION_FAILED';
-      throw error;
-    }
-    return { status: 'success', transactionHash: submitted.hash || submitted.id, ledger: submitted.ledger || null, returnValue: simulation.result?.retval || null, events: simulation.events || [] };
+  // Assets / trustlines
+  async addTrustline(accountSecret, assetCode, issuerPublic, limit = null) {
+    return this.assets.addTrustline(accountSecret, assetCode, issuerPublic, limit);
   }
-
-  async simulateContractInvocation(contractId, method, args) {
-    if (!contractId) throw new Error('contractId is required');
-    if (!method) throw new Error('method is required');
-    if (!Array.isArray(args)) throw new Error('args must be an array');
-    throw new Error('Soroban contract simulation requires a source account and live Soroban RPC connection');
+  async removeTrustline(accountSecret, assetCode, issuerPublic) {
+    return this.assets.removeTrustline(accountSecret, assetCode, issuerPublic);
   }
-
-  async getContractState(contractId) {
-    if (!contractId) throw new Error('contractId is required');
-    return [];
+  async getTrustlines(publicKey) { return this.assets.getTrustlines(publicKey); }
+  async issueAsset(issuerSecret, assetCode, amount, recipientPublic) {
+    return this.assets.issueAsset(issuerSecret, assetCode, amount, recipientPublic);
   }
-
-  async getContractEvents(contractId, limit) {
-    if (!contractId) throw new Error('contractId is required');
-    return limit === undefined ? [] : [];
+  async burnAsset(holderSecret, assetCode, issuerPublic, amount) {
+    return this.assets.burnAsset(holderSecret, assetCode, issuerPublic, amount);
+  }
+  async clawback(issuerSecret, from, assetCode, amount) {
+    return this.assets.clawback(issuerSecret, from, assetCode, amount);
+  }
+  async distributeAsset(distributorSecret, assetCode, issuerPublicKey, recipientPublicKey, amount) {
+    return this.assets.distributeAsset(distributorSecret, assetCode, issuerPublicKey, recipientPublicKey, amount);
   }
 }
 

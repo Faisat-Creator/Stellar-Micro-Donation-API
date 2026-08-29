@@ -183,11 +183,15 @@ function mountRoutes(app, services = {}) {
     try {
       const priceOracle = require('../services/PriceOracleService');
       const rates = await priceOracle.getRates();
+      const priceSource = typeof priceOracle.getPriceSourceStatus === 'function'
+        ? priceOracle.getPriceSourceStatus().source
+        : undefined;
       res.json({
         success: true,
         data: {
           base: 'XLM',
           rates,
+          source: priceSource,
           supportedCurrencies: ['XLM', ...priceOracle.SUPPORTED_CURRENCIES.map(c => c.toUpperCase())],
           cachedAt: new Date().toISOString(),
         },
