@@ -223,7 +223,7 @@ class DonationService {
    * @param {string} params.requestId - Request ID for logging
    * @returns {Promise<Object>} Donation result with transaction details
    */
-  async sendCustodialDonation({ senderId, receiverId, amount, memo, notes, tags, apiKeyId, campaign_id, idempotencyKey, requestId }) {
+  async sendCustodialDonation({ senderId, receiverId, amount, memo, notes, tags, apiKeyId, campaign_id, idempotencyKey, requestId, asset = null }) {
     log.debug('DONATION_SERVICE', 'Processing custodial donation', {
       requestId,
       senderId,
@@ -293,6 +293,8 @@ class DonationService {
     const secret = encryption.decrypt(sender.encryptedSecret);
 
     // Check sender balance and minimum reserve before submitting (max 2s to avoid slowing donation flow)
+    // Custom tokens do not spend the native reserve; skip the XLM reserve check for those payments.
+    if (!asset || asset.type === 'native') {
     try {
       const reserveCheck = await withTimeout(
         this.stellarService.accounts.checkDonationReserve(sender.publicKey, parseFloat(amount)),
@@ -311,6 +313,7 @@ class DonationService {
       // Reserve check timed out or failed — log and proceed optimistically
       log.warn('DONATION_SERVICE', 'Reserve check skipped', { requestId, error: err.message });
     }
+    }
 
     log.debug('DONATION_SERVICE', 'Initiating Stellar transaction', {
       requestId
@@ -321,7 +324,8 @@ class DonationService {
       sourceSecret: secret,
       destinationPublic: receiver.publicKey,
       amount: amount,
-      memo: sanitizedMemo
+      memo: sanitizedMemo,
+      ...(asset ? { asset } : {}),
     });
 
     log.debug('DONATION_SERVICE', 'Stellar transaction successful', {
@@ -713,6 +717,7 @@ class DonationService {
     sendAsset,
     receiveAsset,
     slippageTolerance,
+    asset,
     validAfter = 0,
     validBefore = 0,
     memoEnvelope = null,
@@ -808,11 +813,20 @@ class DonationService {
     const sourceAssetProvided = sourceAsset !== undefined && sourceAsset !== null;
     const sendAssetProvided = sendAsset !== undefined && sendAsset !== null;
     const receiveAssetProvided = receiveAsset !== undefined && receiveAsset !== null;
+    const customAssetProvided = asset !== undefined && asset !== null;
 
     let normalizedDestAsset = DEFAULT_DESTINATION_ASSET;
     let normalizedSourceAsset = sourceAssetProvided
       ? parseAssetInput(sourceAsset, 'sourceAsset')
       : normalizedDestAsset;
+
+    // Direct custom-token payment: same asset on both sides (not a DEX path payment)
+    if (customAssetProvided) {
+      normalizedSourceAsset = (asset.type && asset.code)
+        ? asset
+        : parseAssetInput(asset, 'asset');
+      normalizedDestAsset = normalizedSourceAsset;
+    }
 
     // Handle sendAsset/receiveAsset for path payment donations
     if (sendAssetProvided && receiveAssetProvided) {
@@ -838,7 +852,7 @@ class DonationService {
     if (sourceSecret && sanitizedRecipient && !requiresApproval) {
       await this.checkRecipientAccountExists(sanitizedRecipient);
 
-      const isPathPayment = sourceAssetProvided || (sendAssetProvided && receiveAssetProvided && !isSameAsset(normalizedSourceAsset, normalizedDestAsset));
+      const isPathPayment = !customAssetProvided && (sourceAssetProvided || (sendAssetProvided && receiveAssetProvided && !isSameAsset(normalizedSourceAsset, normalizedDestAsset)));
 
       if (!isPathPayment) {
         // Set correlation ID on StellarService for this request

@@ -584,6 +584,33 @@ class MockStellarService extends StellarServiceInterface {
   async validateMergeEligibility(publicKey) { 
     return this.accounts.validateMergeEligibility(publicKey); 
   }
+
+  // Assets / trustlines
+  async addTrustline(accountSecretOrPublicKey, assetCodeOrAsset, issuerPublic, limit = null) {
+    return this.assets.addTrustline(accountSecretOrPublicKey, assetCodeOrAsset, issuerPublic, limit);
+  }
+  async removeTrustline(accountSecretOrPublicKey, assetCodeOrAsset, issuerPublic) {
+    return this.assets.removeTrustline(accountSecretOrPublicKey, assetCodeOrAsset, issuerPublic);
+  }
+  async getTrustlines(publicKey) { return this.assets.getTrustlines(publicKey); }
+  getTrustline(accountPublic, assetCode, issuerPublic) {
+    return this.assets.getTrustline(accountPublic, assetCode, issuerPublic);
+  }
+  async issueAsset(issuerSecret, assetCode, amount, recipientPublic) {
+    return this.assets.issueAsset(issuerSecret, assetCode, amount, recipientPublic);
+  }
+  async burnAsset(holderSecret, assetCode, issuerPublic, amount) {
+    return this.assets.burnAsset(holderSecret, assetCode, issuerPublic, amount);
+  }
+  async clawback(issuerSecret, from, assetCode, amount) {
+    return this.assets.clawback(issuerSecret, from, assetCode, amount);
+  }
+  async distributeAsset(distributorSecret, assetCode, issuerPublicKey, recipientPublicKey, amount) {
+    return this.assets.distributeAsset(distributorSecret, assetCode, issuerPublicKey, recipientPublicKey, amount);
+  }
+  getAssetHolders(assetCode, issuerPublic) {
+    return this.assets.getAssetHolders(assetCode, issuerPublic);
+  }
 }
 
 module.exports = MockStellarService;
